@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <set>
 #include <vector>
 
 #include "app/hotkeys.h"
@@ -52,8 +53,13 @@ private:
 
     // Library and sources (app_library.cpp)
     void playFromLibrary(const std::string& id);
-    void importFile(const std::string& path);
-    void importText(const std::string& text, const std::string& what);
+    struct ImportStats {
+        int imported = 0, failed = 0, warned = 0;
+        std::string firstId, lastError;
+    };
+    void importFiles(const std::vector<std::string>& paths);
+    void importText(const std::string& text, const std::string& what, ImportStats& stats);
+    void reportImport(const ImportStats& stats, const std::string& what);
     void openPasteDialog(const std::string& clipboard);
     void setStatus(const std::string& message, bool error = false);
 
@@ -112,7 +118,10 @@ private:
     PasteDialog pasteDialog_;
     FileBrowser fileBrowser_;
     std::string libraryFilter_;
-    std::string deleteCandidate_;  // id waiting for delete confirmation
+    std::vector<std::string> deleteCandidates_;  // ids waiting for delete confirmation
+    bool selectMode_ = false;                    // library: tick entries for bulk delete
+    std::set<std::string> selected_;
+    std::vector<std::string> droppedFiles_;      // collected during one event batch
     std::string status_;
     bool statusIsError_ = false;
     double statusTime_ = 0;

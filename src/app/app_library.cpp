@@ -42,28 +42,26 @@ void App::openPasteDialog(const std::string& clipboard) {
     setUiVisible(true);
 }
 
-void App::importFile(const std::string& path) {
-    std::error_code ec;
-    const auto size = fs::file_size(path, ec);
-    if (ec) {
-        setStatus("Can't read " + path + ": " + ec.message(), true);
-        return;
+void App::importFiles(const std::vector<std::string>& paths) {
+    ImportStats stats;
+    for (const std::string& path : paths) {
+        std::error_code ec;
+        const auto size = fs::file_size(path, ec);
+        if (ec || size > kMaxImportBytes) {
+            ++stats.failed;
+            stats.lastError = path + (ec ? ": " + ec.message() : " is too large to be a shader file");
+            continue;
+        }
+        std::ifstream f(path, std::ios::binary);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        importText(ss.str(), fs::path(path).filename().string(), stats);
     }
-    if (size > kMaxImportBytes) {
-        setStatus(path + " is too large to be a shader file", true);
-        return;
-    }
-    std::ifstream f(path, std::ios::binary);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    if (!f && !f.eof()) {
-        setStatus("Can't read " + path, true);
-        return;
-    }
-    importText(ss.str(), fs::path(path).filename().string());
+    reportImport(stats, paths.size() == 1 ? fs::path(paths[0]).filename().string()
+                                          : std::to_string(paths.size()) + " files");
 }
 
-void App::importText(const std::string& text, const std::string& what) {
+void App::importText(const std::string& text, const std::string& what, ImportStats& stats) {
     std::string error;
     std::vector<nlohmann::json> objs;
     try {
@@ -72,11 +70,10 @@ void App::importText(const std::string& text, const std::string& what) {
         error = e.what();
     }
     if (objs.empty()) {
-        setStatus("Can't import " + what + ": " + error, true);
+        ++stats.failed;
+        stats.lastError = what + ": " + error;
         return;
     }
-    int imported = 0, failed = 0, warned = 0;
-    std::string firstId, lastError;
     for (const nlohmann::json& obj : objs) {
         ImportResult r;
         try {
@@ -85,27 +82,31 @@ void App::importText(const std::string& text, const std::string& what) {
             r.error = e.what();
         }
         if (!r.ok) {
-            ++failed;
-            lastError = r.error;
+            ++stats.failed;
+            stats.lastError = what + ": " + r.error;
             continue;
         }
-        const std::string id = library_->add(obj, "import", &error);
+        const std::string id = library_->add(obj, "import", &error, /*rescan=*/false);
         if (id.empty()) {
-            ++failed;
-            lastError = error;
+            ++stats.failed;
+            stats.lastError = what + ": " + error;
             continue;
         }
         for (const std::string& w : r.warnings) LOG_WARN("'%s': %s", r.shader.info.name.c_str(), w.c_str());
-        warned += r.warnings.empty() ? 0 : 1;
-        if (firstId.empty()) firstId = id;
-        ++imported;
+        stats.warned += r.warnings.empty() ? 0 : 1;
+        if (stats.firstId.empty()) stats.firstId = id;
+        ++stats.imported;
     }
+}
 
-    std::string msg = "Imported " + std::to_string(imported) + " shader" + (imported == 1 ? "" : "s") + " from " + what;
-    if (warned) msg += " (" + std::to_string(warned) + " with warnings, see the log)";
-    if (failed) msg += "; " + std::to_string(failed) + " failed: " + lastError;
-    setStatus(msg, imported == 0);
-    if (!firstId.empty()) playFromLibrary(firstId);
+void App::reportImport(const ImportStats& st, const std::string& what) {
+    library_->scan();
+    std::string msg = "Imported " + std::to_string(st.imported) + " shader" + (st.imported == 1 ? "" : "s") +
+                      " from " + what;
+    if (st.warned) msg += " (" + std::to_string(st.warned) + " with warnings, see the log)";
+    if (st.failed) msg += "; " + std::to_string(st.failed) + " failed, last: " + st.lastError;
+    setStatus(msg, st.imported == 0);
+    if (!st.firstId.empty()) playFromLibrary(st.firstId);
 }
 
 }  // namespace sp

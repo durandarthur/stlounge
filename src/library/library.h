@@ -41,12 +41,14 @@ public:
 
     // Stores one shader object (website or API shape). Keeps its ShaderToy id,
     // or assigns a local one. Replaces an existing entry with the same id.
-    // Returns the id, or "" on failure.
-    std::string add(const nlohmann::json& shaderObject, const std::string& source, std::string* error);
+    // Returns the id, or "" on failure. rescan=false defers the folder rescan
+    // (call scan() once after a bulk operation).
+    std::string add(const nlohmann::json& shaderObject, const std::string& source, std::string* error,
+                    bool rescan = true);
     // Stores a shader built in the app (paste dialog).
     std::string addShader(const Shader& shader, const std::string& source, std::string* error);
 
-    bool remove(const std::string& id, std::string* error);
+    bool remove(const std::string& id, std::string* error, bool rescan = true);
 
     // "local-1a2b3c4d": ids for shaders that don't come from shadertoy.com.
     static std::string newLocalId();

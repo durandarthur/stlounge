@@ -148,7 +148,8 @@ bool ShaderLibrary::writeAtomically(const fs::path& path, const std::string& tex
     return true;
 }
 
-std::string ShaderLibrary::add(const json& shaderObject, const std::string& source, std::string* error) {
+std::string ShaderLibrary::add(const json& shaderObject, const std::string& source, std::string* error,
+                               bool rescan) {
     json obj = shaderObject;
     if (obj.contains("Shader") && obj["Shader"].is_object()) obj = obj["Shader"];
     ImportResult check = shaderFromJson(obj);
@@ -172,7 +173,7 @@ std::string ShaderLibrary::add(const json& shaderObject, const std::string& sour
 
     if (!writeAtomically(dir_ / (id + ".json"), obj.dump(2), error)) return "";
     LOG_INFO("library: saved '%s' as %s.json", check.shader.info.name.c_str(), id.c_str());
-    scan();
+    if (rescan) scan();
     return id;
 }
 
@@ -183,7 +184,7 @@ std::string ShaderLibrary::addShader(const Shader& shader, const std::string& so
     return add(obj, source, error);
 }
 
-bool ShaderLibrary::remove(const std::string& id, std::string* error) {
+bool ShaderLibrary::remove(const std::string& id, std::string* error, bool rescan) {
     if (!isSafeId(id)) {
         if (error) *error = "invalid shader id";
         return false;
@@ -194,7 +195,7 @@ bool ShaderLibrary::remove(const std::string& id, std::string* error) {
         return false;
     }
     LOG_INFO("library: removed %s", id.c_str());
-    scan();
+    if (rescan) scan();
     return true;
 }
 

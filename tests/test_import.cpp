@@ -8,10 +8,13 @@
 #include <fstream>
 #include <sstream>
 
+#include <set>
+
 #include "library/library.h"
 #include "shadertoy/json_format.h"
 #include "shadertoy/wrapper.h"
 #include "test.h"
+#include "textures/builtin_list.h"
 #include "ui/paste_dialog.h"
 
 using namespace sp;
@@ -278,4 +281,100 @@ TEST(volume_static_detection) {
     CHECK(!passIsDynamic("", v));
     v.code = "float iTimeScale = 1.0;";  // whole words only
     CHECK(!passIsDynamic("", v));
+}
+
+TEST(import_catalogues_map_every_builtin_texture) {
+    // One channel per ShaderToy texture, cubemap and volume, as labelled in the files.
+    struct Row {
+        const char* file;
+        const char* pass;
+        int channel;
+        const char* builtin;
+    };
+    const Row rows[] = {
+        {"catalogue_textures.json", "Buffer A", 0, "abstract1"},
+        {"catalogue_textures.json", "Buffer A", 1, "abstract2"},
+        {"catalogue_textures.json", "Buffer A", 2, "abstract3"},
+        {"catalogue_textures.json", "Buffer A", 3, "bayer"},
+        {"catalogue_textures.json", "Buffer B", 0, "blue_noise"},
+        {"catalogue_textures.json", "Buffer B", 1, "font1"},
+        {"catalogue_textures.json", "Buffer B", 2, "gray_noise_medium"},
+        {"catalogue_textures.json", "Buffer B", 3, "gray_noise_small"},
+        {"catalogue_textures.json", "Buffer D", 0, "lichen"},
+        {"catalogue_textures.json", "Buffer D", 1, "london"},
+        {"catalogue_textures.json", "Buffer D", 2, "nyancat"},
+        {"catalogue_textures.json", "Buffer D", 3, "organic1"},
+        {"catalogue_textures.json", "Buffer C", 0, "organic2"},
+        {"catalogue_textures.json", "Buffer C", 1, "organic3"},
+        {"catalogue_textures.json", "Buffer C", 2, "organic4"},
+        {"catalogue_textures.json", "Buffer C", 3, "pebbles"},
+        {"catalogue_textures.json", "Volume A", 0, "rgba_noise_medium"},
+        {"catalogue_textures.json", "Volume A", 1, "rgba_noise_small"},
+        {"catalogue_textures.json", "Volume A", 2, "rock_tiles"},
+        {"catalogue_textures.json", "Volume A", 3, "rusty_metal"},
+        {"catalogue_textures.json", "Cube A", 0, "stars"},
+        {"catalogue_textures.json", "Cube A", 1, "wood"},
+        {"catalogue_cubemaps.json", "Image", 0, "forest"},
+        {"catalogue_cubemaps.json", "Image", 1, "forest_blurred"},
+        {"catalogue_cubemaps.json", "Image", 2, "st_peters"},
+        {"catalogue_cubemaps.json", "Image", 3, "st_peters_blurred"},
+        {"catalogue_cubemaps.json", "Buffer A", 0, "uffizi"},
+        {"catalogue_cubemaps.json", "Buffer A", 1, "uffizi_blurred"},
+        {"catalogue_volumes.json", "Image", 0, "gray_noise_3d"},
+        {"catalogue_volumes.json", "Image", 1, "rgba_noise_3d"},
+    };
+    std::set<std::string> covered;
+    for (const char* file : {"catalogue_textures.json", "catalogue_cubemaps.json", "catalogue_volumes.json"}) {
+        auto r = parseShadertoyJson(readText(kData / file));
+        REQUIRE(r.size() == size_t(1) && r[0].ok);
+        for (const std::string& w : r[0].warnings)
+            if (w.find("Cubemap A tab") == std::string::npos) std::printf("    %s: %s\n", file, w.c_str());
+        for (const Row& row : rows) {
+            if (std::string(row.file) != file) continue;
+            const Pass* pass = nullptr;
+            for (const Pass& p : r[0].shader.passes)
+                if (p.name() == row.pass) pass = &p;
+            if (!pass) continue;  // Cube A tab is skipped on import; its inputs are checked below
+            CHECK_EQ(pass->inputs[size_t(row.channel)].asset, std::string(row.builtin));
+            covered.insert(row.builtin);
+        }
+    }
+    // The Cube A tab (Stars, Wood) is skipped on import, so check those two by id directly.
+    CHECK(findBuiltinByShadertoyId("XdfGRn") == findBuiltinTexture("stars"));
+    CHECK(findBuiltinByMediaPath("/media/a/1f7dca9c22f324751f2a5a59c9b181dfe3b5564a04b724c657732d0bf09c99db.jpg") ==
+          findBuiltinTexture("wood"));
+    covered.insert("stars");
+    covered.insert("wood");
+    for (const BuiltinTexture& t : builtinTextures()) {
+        CHECK(*t.stId != '\0');
+        if (!covered.count(t.id)) std::printf("    not covered by a catalogue: %s\n", t.id);
+        CHECK(covered.count(t.id) == 1);
+    }
+}
+
+TEST(docs_volume_check_json_imports) {
+    auto r = parseShadertoyJson(readText(kData / ".." / ".." / "docs" / "volume-a-check.json"));
+    REQUIRE(r.size() == size_t(1) && r[0].ok);
+    CHECK(r[0].warnings.empty());
+    REQUIRE(r[0].shader.volumePass() != nullptr);
+    CHECK(r[0].shader.volumePass()->inputs[0].type == InputType::VolumeBuffer);
+    CHECK(r[0].shader.imagePass()->inputs[0].type == InputType::Buffer);
+}
+
+TEST(library_bulk_add_defers_rescan) {
+    ShaderLibrary lib(tempDir("sp_test_library_bulk"));
+    lib.scan();
+    std::string err;
+    for (int i = 0; i < 20; ++i) {
+        json obj = json::parse(R"({"info": {"id": "-1", "name": "n"}, "renderpass": [{"type": "image", "code": "x"}]})");
+        obj["info"]["name"] = "shader " + std::to_string(i);
+        CHECK(!lib.add(obj, "import", &err, false).empty());
+    }
+    CHECK(lib.entries().empty());  // not rescanned yet
+    lib.scan();
+    CHECK_EQ(lib.entries().size(), size_t(20));
+    for (int i = 0; i < 10; ++i) CHECK(lib.remove(lib.entries()[size_t(i)].id, &err, false));
+    lib.scan();
+    CHECK_EQ(lib.entries().size(), size_t(10));
+    fs::remove_all(lib.dir());
 }

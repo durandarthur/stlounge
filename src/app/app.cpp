@@ -109,6 +109,10 @@ int App::run(const AppOptions& opts) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) handleEvent(e);
         if (!running_) break;
+        if (!droppedFiles_.empty()) {
+            importFiles(droppedFiles_);
+            droppedFiles_.clear();
+        }
 
         updateLoading();
         updateAudio(seconds(frameStart));
@@ -196,8 +200,9 @@ void App::handleEvent(const SDL_Event& e) {
             handleMouse(e);
             break;
         case SDL_DROPFILE:
+            // Several files can arrive in one batch; imported together after polling.
             if (e.drop.file) {
-                importFile(e.drop.file);
+                droppedFiles_.push_back(e.drop.file);
                 SDL_free(e.drop.file);
             }
             break;

@@ -162,3 +162,64 @@ TEST(real_samples_compile_and_render) {
     }
     CHECK_EQ(ok, total);
 }
+
+// The diagnostic from docs/volume-a-check.md must be all green in this app.
+TEST(volume_a_check_doc_shader_is_green) {
+    Fixture f(64, 64);
+    Shader s;
+    Pass v;
+    v.type = PassType::Volume;
+    v.bufferIndex = 0;
+    v.code = R"GLSL(// Voxel (1,0,0) copies voxel (2,0,0) from the volume's previous frame,
+// i.e. the previous iFrame. Every other voxel stores the current iFrame.
+void mainVolume(out vec4 fragColor, in vec3 fragCoord)
+{
+    ivec3 q = ivec3(fragCoord);
+    if (q == ivec3(1, 0, 0))
+        fragColor = vec4(texelFetch(iChannel0, ivec3(2, 0, 0), 0).x);
+    else
+        fragColor = vec4(float(iFrame));
+}
+)GLSL";
+    v.inputs[0].type = InputType::VolumeBuffer;
+    v.inputs[0].bufferIndex = 0;
+    v.inputs[0].sampler = {Filter::Nearest, Wrap::Clamp, false, false};
+    Pass a;
+    a.type = PassType::Buffer;
+    a.bufferIndex = 0;
+    a.code = R"GLSL(// How many frames behind is the volume, as seen from Buffer A?
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    fragColor = vec4(float(iFrame) - texelFetch(iChannel0, ivec3(0), 0).x);
+}
+)GLSL";
+    a.inputs[0] = v.inputs[0];
+    Pass img;
+    img.type = PassType::Image;
+    img.code = R"GLSL(void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec2 uv = fragCoord / iResolution.xy;
+    float d;
+    if (uv.y > 0.5)
+        d = uv.x < 0.5 ? texelFetch(iChannel0, ivec2(0), 0).x                     // Buffer A's lag
+                       : float(iFrame) - texelFetch(iChannel1, ivec3(0), 0).x;    // Image's lag
+    else
+        d = float(iFrame - 1) - texelFetch(iChannel1, ivec3(1, 0, 0), 0).x;       // self-read: previous iFrame
+    vec3 col = d > 0.5 ? vec3(1.0, 0.2, 0.2) : d < -0.5 ? vec3(0.3, 0.3, 1.0) : vec3(0.2, 1.0, 0.3);
+    fragColor = vec4(col, 1.0);
+}
+)GLSL";
+    img.inputs[0].type = InputType::Buffer;
+    img.inputs[0].bufferIndex = 0;
+    img.inputs[0].sampler = {Filter::Nearest, Wrap::Clamp, false, false};
+    img.inputs[1] = v.inputs[0];
+    s.passes = {img, a, v};
+    ShaderRenderer r(f.ctx());
+    REQUIRE(f.compile(r, s) == ShaderRenderer::State::Ready);
+    f.frames(r, 5);
+    for (auto [x, y] : {std::pair{10, 50}, std::pair{50, 50}, std::pair{30, 10}}) {
+        float px[4];
+        f.pixel(x, y, px);
+        CHECK(px[1] > 0.9f && px[0] < 0.3f);  // green
+    }
+}

@@ -34,7 +34,12 @@ void App::drawUi() {
     drawInfoPanel();
     if (showLibrary_) drawLibraryPanel();
     drawPasteDialog();
-    if (auto chosen = fileBrowser_.draw()) importFile(chosen->string());
+    const std::vector<fs::path> chosen = fileBrowser_.draw();
+    if (!chosen.empty()) {
+        std::vector<std::string> paths;
+        for (const fs::path& p : chosen) paths.push_back(p.string());
+        importFiles(paths);
+    }
     if (!errorLog_.empty()) drawErrors();
 }
 
@@ -116,6 +121,22 @@ void App::drawLibraryPanel() {
     }
     ImGui::SameLine();
     if (ImGui::SmallButton("Rescan")) library_->scan();
+    ImGui::SameLine();
+    if (ImGui::Checkbox("Select", &selectMode_)) selected_.clear();
+    if (selectMode_) {
+        if (ImGui::SmallButton("All shown")) {
+            for (const LibraryEntry& e : library_->entries())
+                if (containsNoCase(e.name, libraryFilter_) || containsNoCase(e.author, libraryFilter_))
+                    selected_.insert(e.id);
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("None")) selected_.clear();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(selected_.empty());
+        if (ImGui::SmallButton(("Delete selected (" + std::to_string(selected_.size()) + ")...").c_str()))
+            deleteCandidates_.assign(selected_.begin(), selected_.end());
+        ImGui::EndDisabled();
+    }
 
     if (!status_.empty()) {
         const double age = static_cast<double>(SDL_GetTicks()) / 1000.0 - statusTime_;
@@ -134,6 +155,14 @@ void App::drawLibraryPanel() {
         for (const LibraryEntry& e : entries) {
             if (!containsNoCase(e.name, libraryFilter_) && !containsNoCase(e.author, libraryFilter_)) continue;
             ImGui::PushID(e.id.c_str());
+            if (selectMode_) {
+                bool tick = selected_.count(e.id) != 0;
+                if (ImGui::Checkbox("##sel", &tick)) {
+                    if (tick) selected_.insert(e.id);
+                    else selected_.erase(e.id);
+                }
+                ImGui::SameLine();
+            }
             const std::string label = e.author.empty() ? e.name : e.name + "  -  " + e.author;
             if (!e.loadError.empty()) {
                 ImGui::TextDisabled("%s (unreadable)", label.c_str());
@@ -143,7 +172,7 @@ void App::drawLibraryPanel() {
             }
             if (ImGui::BeginPopupContextItem("##ctx")) {
                 if (!e.url.empty() && ImGui::MenuItem("Copy link")) SDL_SetClipboardText(e.url.c_str());
-                if (ImGui::MenuItem("Delete...")) deleteCandidate_ = e.id;
+                if (ImGui::MenuItem("Delete...")) deleteCandidates_ = {e.id};
                 ImGui::EndPopup();
             }
             ImGui::PopID();
@@ -157,21 +186,33 @@ void App::drawLibraryPanel() {
     ImGui::SameLine();
     if (ImGui::SmallButton("Audio demo")) loadShader(makeAudioDemo());
 
-    if (!deleteCandidate_.empty()) ImGui::OpenPopup("Delete shader?");
-    if (ImGui::BeginPopupModal("Delete shader?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        const LibraryEntry* e = library_->find(deleteCandidate_);
-        ImGui::Text("Delete '%s' from the library?", e ? e->name.c_str() : deleteCandidate_.c_str());
-        ImGui::TextDisabled("The file is removed from %s", library_->dir().c_str());
+    if (!deleteCandidates_.empty() && !ImGui::IsPopupOpen("Delete shaders?")) ImGui::OpenPopup("Delete shaders?");
+    if (ImGui::BeginPopupModal("Delete shaders?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (deleteCandidates_.size() == 1) {
+            const LibraryEntry* e = library_->find(deleteCandidates_[0]);
+            ImGui::Text("Delete '%s' from the library?", e ? e->name.c_str() : deleteCandidates_[0].c_str());
+        } else {
+            ImGui::Text("Delete %zu shaders from the library?", deleteCandidates_.size());
+        }
+        ImGui::TextDisabled("The files are removed from %s", library_->dir().c_str());
         if (ImGui::Button("Delete")) {
+            int failed = 0;
             std::string error;
-            if (!library_->remove(deleteCandidate_, &error)) setStatus("Delete failed: " + error, true);
-            if (deleteCandidate_ == currentLibraryId_) currentLibraryId_.clear();
-            deleteCandidate_.clear();
+            for (const std::string& id : deleteCandidates_) {
+                if (!library_->remove(id, &error, /*rescan=*/false)) ++failed;
+                if (id == currentLibraryId_) currentLibraryId_.clear();
+                selected_.erase(id);
+            }
+            library_->scan();
+            if (failed) setStatus("Delete failed for " + std::to_string(failed) + ": " + error, true);
+            else if (deleteCandidates_.size() > 1)
+                setStatus("Deleted " + std::to_string(deleteCandidates_.size()) + " shaders");
+            deleteCandidates_.clear();
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel")) {
-            deleteCandidate_.clear();
+            deleteCandidates_.clear();
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

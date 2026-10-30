@@ -2,7 +2,7 @@
 // Minimal ImGui file picker for .json files (no native dialog dependency).
 
 #include <filesystem>
-#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -12,8 +12,8 @@ class FileBrowser {
 public:
     void open(const std::filesystem::path& startDir);
     bool isOpen() const { return open_; }
-    // Returns the chosen file once, then closes.
-    std::optional<std::filesystem::path> draw();
+    // Returns the chosen files once (one, ticked ones, or the whole folder), then closes.
+    std::vector<std::filesystem::path> draw();
 
 private:
     void list();
@@ -27,6 +27,7 @@ private:
     std::filesystem::path dir_;
     std::string pathInput_;
     std::vector<Item> items_;
+    std::set<std::string> ticked_;
     std::string error_;
 };
 
