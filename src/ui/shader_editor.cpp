@@ -1,0 +1,181 @@
+#include "ui/shader_editor.h"
+
+#include <imgui.h>
+#include <misc/cpp/imgui_stdlib.h>
+
+#include <vector>
+
+#include "textures/builtin_list.h"
+
+namespace sp {
+
+namespace {
+
+struct SourceItem {
+    std::string label;
+    ChannelInput input;  // type/asset/bufferIndex plus default sampler settings
+};
+
+const std::vector<SourceItem>& sourceItems() {
+    static const std::vector<SourceItem> items = [] {
+        std::vector<SourceItem> v;
+        v.push_back({"(none)", ChannelInput{}});
+        for (int b = 0; b < 4; ++b) {
+            ChannelInput in;
+            in.type = InputType::Buffer;
+            in.bufferIndex = b;
+            in.sampler = {Filter::Linear, Wrap::Clamp, false, false};
+            v.push_back({std::string("Buffer ") + static_cast<char>('A' + b), in});
+        }
+        {
+            ChannelInput in;
+            in.type = InputType::Audio;
+            in.sampler = {Filter::Linear, Wrap::Clamp, false, false};
+            v.push_back({"Audio (desktop loopback)", in});
+        }
+        for (const BuiltinTexture& t : builtinTextures()) {
+            ChannelInput in;
+            in.type = t.kind;
+            in.asset = t.id;
+            in.sampler = {Filter::Mipmap, Wrap::Repeat, t.kind != InputType::Cubemap, false};
+            std::string label = t.label;
+            if (t.kind == InputType::Cubemap) label += " [cubemap]";
+            if (t.kind == InputType::Volume) label += " [3D]";
+            if (!t.available) label += " (not available yet)";
+            v.push_back({label, in});
+        }
+        return v;
+    }();
+    return items;
+}
+
+bool sameSource(const ChannelInput& a, const ChannelInput& b) {
+    if (a.type != b.type) return false;
+    if (a.type == InputType::Buffer) return a.bufferIndex == b.bufferIndex;
+    if (a.type == InputType::Texture || a.type == InputType::Cubemap || a.type == InputType::Volume)
+        return a.asset == b.asset;
+    return a.type != InputType::Unsupported;
+}
+
+std::string trimmed(const std::string& s) {
+    const size_t a = s.find_first_not_of(" \t\r\n");
+    if (a == std::string::npos) return {};
+    return s.substr(a, s.find_last_not_of(" \t\r\n") - a + 1);
+}
+
+}  // namespace
+
+std::string describeInput(const ChannelInput& in) {
+    if (in.type == InputType::Unsupported)
+        return "Unsupported: " + (in.unsupportedWhat.empty() ? std::string("unknown") : in.unsupportedWhat);
+    for (const SourceItem& item : sourceItems())
+        if (sameSource(item.input, in)) return item.label;
+    return "Unknown texture '" + in.asset + "'";
+}
+
+ShaderEditor::ShaderEditor() { clear(); }
+
+void ShaderEditor::clear() {
+    common_.clear();
+    for (Tab& t : tabs_) t = Tab{};
+    info_ = ShaderInfo{};
+}
+
+void ShaderEditor::setShader(const Shader& shader) {
+    clear();
+    info_ = shader.info;
+    common_ = shader.common;
+    for (const Pass& p : shader.passes) {
+        const int idx = p.type == PassType::Image ? 4 : p.bufferIndex;
+        if (idx < 0 || idx > 4) continue;
+        tabs_[static_cast<size_t>(idx)].code = p.code;
+        tabs_[static_cast<size_t>(idx)].inputs = p.inputs;
+    }
+}
+
+Shader ShaderEditor::build() const {
+    Shader s;
+    s.info = info_;
+    s.common = common_;
+    for (int b = 0; b < 4; ++b) {
+        const Tab& t = tabs_[static_cast<size_t>(b)];
+        if (trimmed(t.code).empty()) continue;
+        Pass p;
+        p.type = PassType::Buffer;
+        p.bufferIndex = b;
+        p.code = t.code;
+        p.inputs = t.inputs;
+        s.passes.push_back(p);
+    }
+    Pass image;
+    image.type = PassType::Image;
+    image.code = tabs_[4].code;
+    image.inputs = tabs_[4].inputs;
+    s.passes.push_back(image);
+    return s;
+}
+
+void ShaderEditor::drawChannels(Tab& tab, int tabIndex) {
+    static const char* filters[] = {"nearest", "linear", "mipmap"};
+    static const char* wraps[] = {"clamp", "repeat"};
+    const float sourceWidth = ImGui::GetFontSize() * 15.0f;
+    const float smallWidth = ImGui::GetFontSize() * 5.5f;
+
+    for (int c = 0; c < 4; ++c) {
+        ChannelInput& in = tab.inputs[static_cast<size_t>(c)];
+        ImGui::PushID(tabIndex * 10 + c);
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("iChannel%d", c);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(sourceWidth);
+        const std::string preview = describeInput(in);
+        if (ImGui::BeginCombo("##src", preview.c_str())) {
+            for (const SourceItem& item : sourceItems()) {
+                const bool selected = sameSource(item.input, in);
+                if (ImGui::Selectable(item.label.c_str(), selected)) in = item.input;
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        if (in.type != InputType::None && in.type != InputType::Unsupported) {
+            int f = static_cast<int>(in.sampler.filter);
+            int w = static_cast<int>(in.sampler.wrap);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(smallWidth);
+            if (ImGui::Combo("##filter", &f, filters, 3)) in.sampler.filter = static_cast<Filter>(f);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(smallWidth);
+            if (ImGui::Combo("##wrap", &w, wraps, 2)) in.sampler.wrap = static_cast<Wrap>(w);
+            ImGui::SameLine();
+            ImGui::Checkbox("vflip", &in.sampler.vflip);
+        }
+        ImGui::PopID();
+    }
+}
+
+void ShaderEditor::draw() {
+    if (!ImGui::BeginTabBar("##passes")) return;
+
+    if (ImGui::BeginTabItem(trimmed(common_).empty() ? "Common###common" : "Common*###common")) {
+        ImGui::TextDisabled("Code shared by all passes.");
+        ImGui::InputTextMultiline("##common", &common_, ImVec2(-1, -1), ImGuiInputTextFlags_AllowTabInput);
+        ImGui::EndTabItem();
+    }
+    for (int i = 0; i < 5; ++i) {
+        Tab& tab = tabs_[static_cast<size_t>(i)];
+        std::string name = i == 4 ? "Image" : std::string("Buffer ") + static_cast<char>('A' + i);
+        const bool hasCode = !trimmed(tab.code).empty();
+        const std::string label = name + (i < 4 && hasCode ? "*" : "") + "###tab" + std::to_string(i);
+        if (ImGui::BeginTabItem(label.c_str())) {
+            if (i < 4) ImGui::TextDisabled("Leave empty if the shader has no %s.", name.c_str());
+            drawChannels(tab, i);
+            ImGui::PushID(i);
+            ImGui::InputTextMultiline("##code", &tab.code, ImVec2(-1, -1), ImGuiInputTextFlags_AllowTabInput);
+            ImGui::PopID();
+            ImGui::EndTabItem();
+        }
+    }
+    ImGui::EndTabBar();
+}
+
+}  // namespace sp

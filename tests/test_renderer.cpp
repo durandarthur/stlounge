@@ -233,3 +233,17 @@ TEST(renderer_builtin_test_pattern_compiles) {
     if (st == ShaderRenderer::State::Failed) std::printf("    log: %s\n", r.errorLog().c_str());
     CHECK(st == ShaderRenderer::State::Ready);
 }
+
+TEST(renderer_multipass_demo_sources_compile) {
+    Fixture f;
+    ShaderRenderer r(f.ctx());
+    Shader s = imageShader(kDemoImage);
+    Pass a;
+    a.type = PassType::Buffer;
+    a.bufferIndex = 0;
+    a.code = kDemoBufferA;
+    s.passes.insert(s.passes.begin(), a);
+    const auto st = f.compile(r, s);
+    if (st == ShaderRenderer::State::Failed) std::printf("    log: %s\n", r.errorLog().c_str());
+    CHECK(st == ShaderRenderer::State::Ready);
+}

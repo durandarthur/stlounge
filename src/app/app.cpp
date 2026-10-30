@@ -33,6 +33,27 @@ Shader makeImageShader(const std::string& name, const std::string& code) {
     return s;
 }
 
+Shader makeMultipassDemo() {
+    Shader s;
+    s.info.name = "Multipass demo";
+    Pass a;
+    a.type = PassType::Buffer;
+    a.bufferIndex = 0;
+    a.code = kDemoBufferA;
+    a.inputs[0].type = InputType::Buffer;
+    a.inputs[0].bufferIndex = 0;
+    a.inputs[0].sampler = {Filter::Linear, Wrap::Clamp, false, false};
+    Pass image;
+    image.type = PassType::Image;
+    image.code = kDemoImage;
+    image.inputs[0] = a.inputs[0];
+    image.inputs[1].type = InputType::Texture;
+    image.inputs[1].asset = "rgba_noise_medium";
+    image.inputs[1].sampler = {Filter::Mipmap, Wrap::Repeat, true, false};
+    s.passes = {a, image};
+    return s;
+}
+
 }  // namespace
 
 bool App::startup(const AppOptions& opts) {
@@ -82,15 +103,19 @@ bool App::startup(const AppOptions& opts) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, APP_DISPLAY_NAME, error.c_str(), window_.sdl());
         return false;
     }
-    renderContext_ = RenderContext{&caps_, &triangle_, &neutral_};
+    renderContext_.caps = &caps_;
+    renderContext_.triangle = &triangle_;
+    renderContext_.neutral = &neutral_;
+    renderContext_.textures = &textures_;
 
     if (!overlay_.init(window_.sdl(), window_.context(), (paths_.stateDir / "imgui.ini").string())) {
         // The shader can still be shown without UI; keep going.
         LOG_ERROR("UI could not be initialised; continuing without it");
     }
 
-    editorText_ = kBuiltinShader;
-    loadShader(makeImageShader("Built-in test pattern", editorText_));
+    const Shader pattern = makeImageShader("Built-in test pattern", kBuiltinShader);
+    editor_.setShader(pattern);
+    loadShader(pattern);
     return true;
 }
 
@@ -128,13 +153,13 @@ int App::run(const AppOptions& opts) {
     }
 
     LOG_INFO("exiting");
-    // GL objects must go before the context.
+    // GL objects must go before the context. Members declared after window_
+    // are destroyed before it, but release the big ones explicitly anyway.
     current_.reset();
     pending_.reset();
     imageTarget_.destroy();
+    textures_.clear();
     overlay_.shutdown();
-    window_.destroy();
-    log::shutdown();
     return 0;
 }
 
@@ -151,6 +176,7 @@ void App::updateLoading() {
     switch (pending_->update()) {
         case ShaderRenderer::State::Ready:
             LOG_INFO("'%s' ready (compile %.0f ms)", pending_->shader().info.name.c_str(), pending_->compileMs());
+            for (const std::string& w : pending_->warnings()) LOG_WARN("%s", w.c_str());
             current_ = std::move(pending_);
             clock_.reset();
             mouse_.reset();
@@ -337,6 +363,9 @@ void App::drawInfoPanel() {
             ImGui::TextDisabled("No shader running");
         }
         if (pending_) ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "Compiling...");
+        if (current_)
+            for (const std::string& w : current_->warnings())
+                ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "%s", w.c_str());
         ImGui::Text("iTime %.2f   iFrame %d   %s", clock_.time(), clock_.frame(), paused_ ? "[PAUSED]" : "");
         float m[4];
         mouse_.uniform(m);
@@ -367,15 +396,23 @@ void App::drawInfoPanel() {
 
 void App::drawEditor() {
     ImGui::SetNextWindowPos(ImVec2(500, 16), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(620, 520), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Image code (temporary test editor)", &showEditor_)) {
-        ImGui::TextDisabled("Paste a single-pass ShaderToy shader (Image tab) and press Compile.");
-        if (ImGui::Button("Compile")) loadShader(makeImageShader("Test editor", editorText_));
+    ImGui::SetNextWindowSize(ImVec2(700, 560), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Shader editor (temporary)", &showEditor_)) {
+        if (ImGui::Button("Compile")) {
+            Shader s = editor_.build();
+            s.info.name = "Editor";
+            loadShader(s);
+        }
         ImGui::SameLine();
-        if (ImGui::Button("Clear")) editorText_.clear();
+        if (ImGui::Button("Clear all")) editor_.clear();
         ImGui::SameLine();
-        if (ImGui::Button("Restore test pattern")) editorText_ = kBuiltinShader;
-        ImGui::InputTextMultiline("##code", &editorText_, ImVec2(-1, -1), ImGuiInputTextFlags_AllowTabInput);
+        if (ImGui::Button("Test pattern")) editor_.setShader(makeImageShader("Built-in test pattern", kBuiltinShader));
+        ImGui::SameLine();
+        if (ImGui::Button("Load multipass demo")) {
+            editor_.setShader(makeMultipassDemo());
+            loadShader(makeMultipassDemo());
+        }
+        editor_.draw();
     }
     ImGui::End();
 }

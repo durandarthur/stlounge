@@ -52,7 +52,9 @@ add_library(sp_core STATIC
   src/shadertoy/mouse.cpp
   src/shadertoy/shader.cpp
   src/shadertoy/uniforms.cpp
-  src/shadertoy/wrapper.cpp)
+  src/shadertoy/wrapper.cpp
+  src/textures/builtin_list.cpp
+  src/textures/procedural.cpp)
 target_include_directories(sp_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_compile_options(sp_core PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_core PUBLIC Threads::Threads)
@@ -63,6 +65,7 @@ add_library(sp_gfx STATIC
   src/gfx/neutral_textures.cpp
   src/gfx/program.cpp
   src/gfx/render_target.cpp
+  src/gfx/texture_library.cpp
   src/shadertoy/renderer.cpp)
 target_compile_options(sp_gfx PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_gfx PUBLIC sp_core PkgConfig::GLESV2 PkgConfig::EGL)
@@ -72,7 +75,8 @@ add_library(sp_app STATIC
   src/app/app.cpp
   src/app/hotkeys.cpp
   src/platform/window.cpp
-  src/ui/overlay.cpp)
+  src/ui/overlay.cpp
+  src/ui/shader_editor.cpp)
 target_compile_options(sp_app PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_app PUBLIC sp_gfx imgui PkgConfig::SDL2 PkgConfig::EGL)
 

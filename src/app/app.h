@@ -8,12 +8,15 @@
 #include "gfx/gl_caps.h"
 #include "gfx/neutral_textures.h"
 #include "gfx/render_target.h"
+#include "gfx/texture_library.h"
+#include "platform/log.h"
 #include "platform/paths.h"
 #include "platform/window.h"
 #include "shadertoy/mouse.h"
 #include "shadertoy/renderer.h"
 #include "shadertoy/uniforms.h"
 #include "ui/overlay.h"
+#include "ui/shader_editor.h"
 
 namespace sp {
 
@@ -24,6 +27,7 @@ struct AppOptions {
 
 class App {
 public:
+    ~App() { log::shutdown(); }
     int run(const AppOptions& opts);
 
 private:
@@ -53,6 +57,7 @@ private:
     // Rendering
     FullscreenTriangle triangle_;
     NeutralTextures neutral_;
+    TextureLibrary textures_;
     Blitter blitter_;
     RenderContext renderContext_;
     RenderTarget imageTarget_;  // Image pass output at render resolution
@@ -67,7 +72,7 @@ private:
     bool running_ = true;
     bool uiVisible_ = true;
     bool showEditor_ = true;
-    std::string editorText_;
+    ShaderEditor editor_;
     std::string errorLog_;
 
     // Frame timing

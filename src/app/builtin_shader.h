@@ -35,4 +35,29 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
 }
 )";
 
+// Multipass demo (original): Buffer A keeps a fading trail in a float buffer
+// (values go above 1.0), Image tone-maps it and adds grain from a noise texture.
+inline const char* const kDemoBufferA = R"(// Buffer A. iChannel0 = Buffer A (itself, previous frame).
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec2 uv = fragCoord / iResolution.xy;
+    vec3 prev = texture(iChannel0, uv).rgb;
+    vec2 dotPos = iResolution.xy * (0.5 + 0.35 * vec2(cos(iTime), sin(iTime * 1.3)));
+    vec3 add = vec3(1.0, 0.6, 0.2) * smoothstep(12.0, 0.0, length(fragCoord - dotPos));
+    if (iMouse.z > 0.0)
+        add += vec3(0.2, 0.6, 1.0) * smoothstep(20.0, 0.0, length(fragCoord - iMouse.xy));
+    fragColor = iFrame == 0 ? vec4(0.0) : vec4(prev * 0.97 + add, 1.0);
+}
+)";
+
+inline const char* const kDemoImage = R"(// Image. iChannel0 = Buffer A, iChannel1 = RGBA Noise Medium.
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec3 col = texture(iChannel0, fragCoord / iResolution.xy).rgb;
+    col = col / (1.0 + col);  // the trail exceeds 1.0 in the float buffer
+    float grain = texture(iChannel1, fragCoord / 256.0).r - 0.5;
+    fragColor = vec4(col + 0.03 * grain, 1.0);
+}
+)";
+
 }  // namespace sp

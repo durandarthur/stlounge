@@ -4,7 +4,8 @@ add_executable(sp_unit_tests
   test_paths.cpp
   test_hotkeys.cpp
   test_wrapper.cpp
-  test_mouse_uniforms.cpp)
+  test_mouse_uniforms.cpp
+  test_textures.cpp)
 target_include_directories(sp_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(sp_unit_tests PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_unit_tests PRIVATE sp_core sp_app)
@@ -16,7 +17,8 @@ add_executable(sp_gl_tests
   test_main.cpp
   headless_gl.cpp
   test_gl_caps.cpp
-  test_renderer.cpp)
+  test_renderer.cpp
+  test_multipass.cpp)
 target_include_directories(sp_gl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(sp_gl_tests PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_gl_tests PRIVATE sp_gfx PkgConfig::EGL)
