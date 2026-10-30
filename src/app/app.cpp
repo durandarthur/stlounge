@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -51,6 +52,13 @@ Shader makeMultipassDemo() {
     image.inputs[1].asset = "rgba_noise_medium";
     image.inputs[1].sampler = {Filter::Mipmap, Wrap::Repeat, true, false};
     s.passes = {a, image};
+    return s;
+}
+
+Shader makeAudioDemo() {
+    Shader s = makeImageShader("Audio demo", kDemoAudio);
+    s.passes[0].inputs[0].type = InputType::Audio;
+    s.passes[0].inputs[0].sampler = {Filter::Linear, Wrap::Clamp, false, false};
     return s;
 }
 
@@ -107,6 +115,8 @@ bool App::startup(const AppOptions& opts) {
     renderContext_.triangle = &triangle_;
     renderContext_.neutral = &neutral_;
     renderContext_.textures = &textures_;
+    audioTexture_.init();
+    renderContext_.audioTexture = audioTexture_.id();
 
     if (!overlay_.init(window_.sdl(), window_.context(), (paths_.stateDir / "imgui.ini").string())) {
         // The shader can still be shown without UI; keep going.
@@ -137,6 +147,7 @@ int App::run(const AppOptions& opts) {
         if (!running_) break;
 
         updateLoading();
+        updateAudio(seconds(frameStart));
         renderFrame(dt);
         window_.swap();
         limitFrameRate(frameStart);
@@ -155,6 +166,7 @@ int App::run(const AppOptions& opts) {
     LOG_INFO("exiting");
     // GL objects must go before the context. Members declared after window_
     // are destroyed before it, but release the big ones explicitly anyway.
+    audio_.stop();
     current_.reset();
     pending_.reset();
     imageTarget_.destroy();
@@ -319,6 +331,7 @@ void App::renderFrame(double dt) {
             std::chrono::duration<double>(now - std::chrono::system_clock::from_time_t(tt)).count();
         computeDate(tt, frac, u.date);
         for (float& t : u.channelTime) t = u.time;
+        u.sampleRate = static_cast<float>(AudioCapture::kSampleRate);
 
         current_->render(u, imageTarget_);
         if (!paused_) {
@@ -388,6 +401,7 @@ void App::drawInfoPanel() {
                         caps_.bufferLinearFilter ? "" : " (nearest only)");
             ImGui::Text("Parallel shader compile: %s", caps_.parallelCompile ? "yes" : "no");
         }
+        drawAudioSection();
         ImGui::Checkbox("Show test editor", &showEditor_);
         ImGui::TextDisabled("Space pause  F5 reload  H/Tab hide UI  F/F11 fullscreen");
     }
@@ -412,9 +426,107 @@ void App::drawEditor() {
             editor_.setShader(makeMultipassDemo());
             loadShader(makeMultipassDemo());
         }
+        ImGui::SameLine();
+        if (ImGui::Button("Load audio demo")) {
+            editor_.setShader(makeAudioDemo());
+            loadShader(makeAudioDemo());
+        }
         editor_.draw();
     }
     ImGui::End();
+}
+
+void App::updateAudio(double now) {
+    const bool needed = current_ && current_->usesAudio();
+    const AudioCapture::State st = audio_.state();
+
+    if (!needed) {
+        if (st == AudioCapture::State::Running || st == AudioCapture::State::Connecting) {
+            if (audioUnusedSince_ < 0) {
+                audioUnusedSince_ = now;
+            } else if (now - audioUnusedSince_ > 5.0) {
+                audio_.stop();
+                analyser_.reset();
+                audioUnusedSince_ = -1;
+                LOG_INFO("audio capture stopped (no shader uses it)");
+            }
+        }
+        return;
+    }
+    audioUnusedSince_ = -1;
+
+    if (st == AudioCapture::State::Off) {
+        audio_.start(audioDevice_);
+    } else if (st == AudioCapture::State::Failed) {
+        // The server may come back (e.g. PipeWire restarted): retry now and then.
+        if (audioFailedAt_ < 0) {
+            audioFailedAt_ = now;
+        } else if (now - audioFailedAt_ > 10.0) {
+            audioFailedAt_ = -1;
+            audio_.start(audioDevice_);
+        }
+    }
+
+    if (paused_) return;
+    if (audio_.state() == AudioCapture::State::Running) {
+        float samples[SpectrumAnalyser::kFftSize];
+        uint8_t waveform[SpectrumAnalyser::kBins];
+        audio_.latest(samples, SpectrumAnalyser::kFftSize);
+        analyser_.process(samples, audioFrequency_, waveform);
+        audioTexture_.upload(audioFrequency_, waveform);
+        audioTextureSilent_ = false;
+    } else if (!audioTextureSilent_) {
+        audioTexture_.uploadSilence();
+        std::fill(std::begin(audioFrequency_), std::end(audioFrequency_), uint8_t{0});
+        audioTextureSilent_ = true;
+    }
+}
+
+void App::drawAudioSection() {
+    if (!ImGui::CollapsingHeader("Audio")) return;
+    switch (audio_.state()) {
+        case AudioCapture::State::Off:
+            ImGui::TextDisabled("Capture off (the current shader has no audio input)");
+            break;
+        case AudioCapture::State::Connecting:
+            ImGui::Text("Connecting...");
+            break;
+        case AudioCapture::State::Running:
+            ImGui::TextWrapped("Capturing from %s", audio_.sourceName().c_str());
+            break;
+        case AudioCapture::State::Failed:
+            ImGui::TextColored(ImVec4(1, 0.45f, 0.4f, 1), "Audio unavailable: %s", audio_.error().c_str());
+            ImGui::TextDisabled("Audio inputs stay silent. Retrying every 10 s.");
+            break;
+    }
+
+    if (!audioSourcesListed_) {
+        audioSources_ = AudioCapture::listSources(&audioListError_);
+        audioSourcesListed_ = true;
+    }
+    std::string current = "Default output (follows changes)";
+    for (const AudioSource& src : audioSources_)
+        if (src.name == audioDevice_) current = src.description;
+    if (ImGui::BeginCombo("Source", current.c_str())) {
+        if (ImGui::Selectable("Default output (follows changes)", audioDevice_.empty())) audioDevice_.clear();
+        for (const AudioSource& src : audioSources_) {
+            const std::string label = (src.isMonitor ? "Output: " : "Input: ") + src.description;
+            if (ImGui::Selectable(label.c_str(), src.name == audioDevice_)) audioDevice_ = src.name;
+        }
+        ImGui::EndCombo();
+        if (audioDevice_ != audio_.requestedDevice() && audio_.state() != AudioCapture::State::Off) {
+            audio_.start(audioDevice_);
+            audioFailedAt_ = -1;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Refresh")) audioSourcesListed_ = false;
+    if (!audioListError_.empty()) ImGui::TextDisabled("%s", audioListError_.c_str());
+
+    float bins[SpectrumAnalyser::kBins];
+    for (int i = 0; i < SpectrumAnalyser::kBins; ++i) bins[i] = audioFrequency_[i];
+    ImGui::PlotHistogram("##fft", bins, SpectrumAnalyser::kBins, 0, "FFT (texture row 0)", 0.0f, 255.0f,
+                         ImVec2(-1, 60));
 }
 
 void App::drawErrors() {

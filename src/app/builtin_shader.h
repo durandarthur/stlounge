@@ -60,4 +60,20 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
 }
 )";
 
+// Audio demo (original): spectrum bars from row 0, waveform from row 1.
+inline const char* const kDemoAudio = R"(// Audio demo. iChannel0 = Audio.
+// Texture row 0 (y = 0.25) is the FFT, row 1 (y = 0.75) the waveform.
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec2 uv = fragCoord / iResolution.xy;
+    float fft  = texture(iChannel0, vec2(uv.x, 0.25)).x;
+    float wave = texture(iChannel0, vec2(uv.x, 0.75)).x;
+
+    vec3 col = vec3(0.04, 0.04, 0.06);
+    col += vec3(0.2, 0.7, 1.0) * step(uv.y, fft) * (0.35 + 0.65 * uv.y);
+    col += vec3(1.0, 0.55, 0.2) * smoothstep(3.0 / iResolution.y, 0.0, abs(uv.y - wave));
+    fragColor = vec4(col, 1.0);
+}
+)";
+
 }  // namespace sp

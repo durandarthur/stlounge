@@ -3,8 +3,12 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "app/hotkeys.h"
+#include "audio/analyser.h"
+#include "audio/capture.h"
+#include "gfx/audio_texture.h"
 #include "gfx/gl_caps.h"
 #include "gfx/neutral_textures.h"
 #include "gfx/render_target.h"
@@ -41,11 +45,13 @@ private:
     void updateLoading();
     void ensureImageTarget(int drawableW, int drawableH);
     void renderFrame(double dt);
+    void updateAudio(double now);
 
     void drawUi();
     void drawInfoPanel();
     void drawEditor();
     void drawErrors();
+    void drawAudioSection();
     void limitFrameRate(uint64_t frameStart);
 
     AppOptions opts_;
@@ -58,6 +64,7 @@ private:
     FullscreenTriangle triangle_;
     NeutralTextures neutral_;
     TextureLibrary textures_;
+    AudioTexture audioTexture_;
     Blitter blitter_;
     RenderContext renderContext_;
     RenderTarget imageTarget_;  // Image pass output at render resolution
@@ -67,6 +74,18 @@ private:
     float renderScale_ = 1.0f;
     bool paused_ = false;
     bool redrawOnce_ = false;  // render a frame even while paused (resize, new shader)
+
+    // Audio: captured only while the current shader has an audio input
+    AudioCapture audio_;
+    SpectrumAnalyser analyser_;
+    std::string audioDevice_;          // "" = monitor of the default output
+    double audioUnusedSince_ = -1.0;   // stop capture 5 s after the last use
+    double audioFailedAt_ = -1.0;      // retry 10 s after a failure
+    bool audioTextureSilent_ = true;
+    uint8_t audioFrequency_[SpectrumAnalyser::kBins] = {};
+    std::vector<AudioSource> audioSources_;
+    std::string audioListError_;
+    bool audioSourcesListed_ = false;
 
     // UI state
     bool running_ = true;

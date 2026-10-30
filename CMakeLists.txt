@@ -26,6 +26,7 @@ find_package(Threads REQUIRED)
 pkg_check_modules(SDL2   REQUIRED IMPORTED_TARGET sdl2)
 pkg_check_modules(EGL    REQUIRED IMPORTED_TARGET egl)
 pkg_check_modules(GLESV2 REQUIRED IMPORTED_TARGET glesv2)
+pkg_check_modules(PULSE  REQUIRED IMPORTED_TARGET libpulse)
 
 configure_file(src/app_info.h.in ${CMAKE_BINARY_DIR}/generated/app_info.h @ONLY)
 
@@ -49,6 +50,7 @@ set(SP_WARNINGS -Wall -Wextra -Wno-unused-parameter)
 add_library(sp_core STATIC
   src/platform/log.cpp
   src/platform/paths.cpp
+  src/audio/analyser.cpp
   src/shadertoy/mouse.cpp
   src/shadertoy/shader.cpp
   src/shadertoy/uniforms.cpp
@@ -59,8 +61,15 @@ target_include_directories(sp_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_compile_options(sp_core PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_core PUBLIC Threads::Threads)
 
+# ---- Audio capture (libpulse; works on PipeWire through pipewire-pulse) ----
+add_library(sp_audio STATIC
+  src/audio/capture.cpp)
+target_compile_options(sp_audio PRIVATE ${SP_WARNINGS})
+target_link_libraries(sp_audio PUBLIC sp_core PkgConfig::PULSE)
+
 # ---- GL helpers: GLES 3.0 only, no SDL (usable from headless tests). ----
 add_library(sp_gfx STATIC
+  src/gfx/audio_texture.cpp
   src/gfx/gl_caps.cpp
   src/gfx/neutral_textures.cpp
   src/gfx/program.cpp
@@ -78,7 +87,7 @@ add_library(sp_app STATIC
   src/ui/overlay.cpp
   src/ui/shader_editor.cpp)
 target_compile_options(sp_app PRIVATE ${SP_WARNINGS})
-target_link_libraries(sp_app PUBLIC sp_gfx imgui PkgConfig::SDL2 PkgConfig::EGL)
+target_link_libraries(sp_app PUBLIC sp_gfx sp_audio imgui PkgConfig::SDL2 PkgConfig::EGL)
 
 add_executable(${APP_NAME} src/main.cpp)
 target_compile_options(${APP_NAME} PRIVATE ${SP_WARNINGS})

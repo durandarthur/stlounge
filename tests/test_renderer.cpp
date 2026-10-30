@@ -247,3 +247,15 @@ TEST(renderer_multipass_demo_sources_compile) {
     if (st == ShaderRenderer::State::Failed) std::printf("    log: %s\n", r.errorLog().c_str());
     CHECK(st == ShaderRenderer::State::Ready);
 }
+
+TEST(renderer_audio_demo_compiles_and_flags_audio) {
+    Fixture f;
+    ShaderRenderer r(f.ctx());
+    Shader s = imageShader(kDemoAudio);
+    s.passes[0].inputs[0].type = InputType::Audio;
+    const auto st = f.compile(r, s);
+    if (st == ShaderRenderer::State::Failed) std::printf("    log: %s\n", r.errorLog().c_str());
+    CHECK(st == ShaderRenderer::State::Ready);
+    CHECK(r.usesAudio());
+    CHECK(r.warnings().empty());
+}
