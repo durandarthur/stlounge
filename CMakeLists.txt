@@ -37,7 +37,8 @@ add_library(imgui STATIC
   ${IMGUI_DIR}/imgui_tables.cpp
   ${IMGUI_DIR}/imgui_widgets.cpp
   ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp
-  ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
+  ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+  ${IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp)
 target_include_directories(imgui SYSTEM PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_ES3 IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
 target_link_libraries(imgui PUBLIC PkgConfig::SDL2 PkgConfig::GLESV2)
@@ -47,16 +48,24 @@ set(SP_WARNINGS -Wall -Wextra -Wno-unused-parameter)
 # ---- Core: no SDL, no GL. Pure logic that tests can use anywhere. ----
 add_library(sp_core STATIC
   src/platform/log.cpp
-  src/platform/paths.cpp)
+  src/platform/paths.cpp
+  src/shadertoy/mouse.cpp
+  src/shadertoy/shader.cpp
+  src/shadertoy/uniforms.cpp
+  src/shadertoy/wrapper.cpp)
 target_include_directories(sp_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_compile_options(sp_core PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_core PUBLIC Threads::Threads)
 
 # ---- GL helpers: GLES 3.0 only, no SDL (usable from headless tests). ----
 add_library(sp_gfx STATIC
-  src/gfx/gl_caps.cpp)
+  src/gfx/gl_caps.cpp
+  src/gfx/neutral_textures.cpp
+  src/gfx/program.cpp
+  src/gfx/render_target.cpp
+  src/shadertoy/renderer.cpp)
 target_compile_options(sp_gfx PRIVATE ${SP_WARNINGS})
-target_link_libraries(sp_gfx PUBLIC sp_core PkgConfig::GLESV2)
+target_link_libraries(sp_gfx PUBLIC sp_core PkgConfig::GLESV2 PkgConfig::EGL)
 
 # ---- App: window, UI, main loop. ----
 add_library(sp_app STATIC

@@ -1,11 +1,18 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <string>
 
 #include "app/hotkeys.h"
 #include "gfx/gl_caps.h"
+#include "gfx/neutral_textures.h"
+#include "gfx/render_target.h"
 #include "platform/paths.h"
 #include "platform/window.h"
+#include "shadertoy/mouse.h"
+#include "shadertoy/renderer.h"
+#include "shadertoy/uniforms.h"
 #include "ui/overlay.h"
 
 namespace sp {
@@ -22,10 +29,19 @@ public:
 private:
     bool startup(const AppOptions& opts);
     void handleEvent(const SDL_Event& e);
+    void handleMouse(const SDL_Event& e);
     void doAction(Action a);
     void setUiVisible(bool visible);
-    void renderFrame(double now);
+
+    void loadShader(const Shader& shader);
+    void updateLoading();
+    void ensureImageTarget(int drawableW, int drawableH);
+    void renderFrame(double dt);
+
     void drawUi();
+    void drawInfoPanel();
+    void drawEditor();
+    void drawErrors();
     void limitFrameRate(uint64_t frameStart);
 
     AppOptions opts_;
@@ -34,8 +50,25 @@ private:
     Overlay overlay_;
     GlCaps caps_;
 
+    // Rendering
+    FullscreenTriangle triangle_;
+    NeutralTextures neutral_;
+    Blitter blitter_;
+    RenderContext renderContext_;
+    RenderTarget imageTarget_;  // Image pass output at render resolution
+    std::unique_ptr<ShaderRenderer> current_, pending_;
+    PlaybackClock clock_;
+    MouseState mouse_;
+    float renderScale_ = 1.0f;
+    bool paused_ = false;
+    bool redrawOnce_ = false;  // render a frame even while paused (resize, new shader)
+
+    // UI state
     bool running_ = true;
     bool uiVisible_ = true;
+    bool showEditor_ = true;
+    std::string editorText_;
+    std::string errorLog_;
 
     // Frame timing
     double fps_ = 0.0, frameMs_ = 0.0;
