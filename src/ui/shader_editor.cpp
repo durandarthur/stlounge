@@ -48,6 +48,14 @@ const std::vector<SourceItem>& sourceItems() {
                 v.push_back({section, label, in});
             }
         }
+        // Listed so a shader's channels can be set up like on ShaderToy, with
+        // a clear warning instead of silently missing inputs.
+        for (const char* what : {"Cubemap A", "Volume A", "Keyboard", "Webcam", "Video"}) {
+            ChannelInput in;
+            in.type = InputType::Unsupported;
+            in.unsupportedWhat = what;
+            v.push_back({"Not supported (black)", what, in});
+        }
         return v;
     }();
     return items;
@@ -58,7 +66,8 @@ bool sameSource(const ChannelInput& a, const ChannelInput& b) {
     if (a.type == InputType::Buffer) return a.bufferIndex == b.bufferIndex;
     if (a.type == InputType::Texture || a.type == InputType::Cubemap || a.type == InputType::Volume)
         return a.asset == b.asset;
-    return a.type != InputType::Unsupported;
+    if (a.type == InputType::Unsupported) return a.unsupportedWhat == b.unsupportedWhat;
+    return true;
 }
 
 std::string trimmed(const std::string& s) {
