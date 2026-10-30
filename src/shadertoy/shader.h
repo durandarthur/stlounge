@@ -7,7 +7,7 @@
 
 namespace sp {
 
-enum class PassType { Buffer, Image };
+enum class PassType { Buffer, Image, Volume };  // Volume = ShaderToy's "Volume A" (mainVolume)
 
 enum class InputType {
     None,
@@ -15,6 +15,7 @@ enum class InputType {
     Cubemap,
     Volume,       // 3D texture
     Buffer,       // output of Buffer A-D
+    VolumeBuffer, // output of the Volume A pass (3D texture)
     Audio,        // 512x2 FFT + waveform from loopback capture
     Unsupported,  // webcam, video, keyboard, cubemap buffer... (neutral fallback texture)
 };
@@ -32,14 +33,14 @@ struct SamplerSettings {
 struct ChannelInput {
     InputType type = InputType::None;
     std::string asset;          // built-in texture name, for Texture/Cubemap/Volume
-    int bufferIndex = -1;       // 0..3 = Buffer A..D, for Buffer
+    int bufferIndex = -1;       // 0..3 = Buffer A..D, for Buffer (0 for VolumeBuffer)
     SamplerSettings sampler;
     std::string unsupportedWhat;  // e.g. "webcam", for Unsupported
 };
 
 struct Pass {
     PassType type = PassType::Image;
-    int bufferIndex = -1;  // 0..3 for Buffer A..D
+    int bufferIndex = -1;  // 0..3 for Buffer A..D, 0 for Volume A
     std::string code;
     std::array<ChannelInput, 4> inputs;
 
@@ -57,9 +58,10 @@ struct ShaderInfo {
 struct Shader {
     ShaderInfo info;
     std::string common;       // Common tab, prepended to every pass
-    std::vector<Pass> passes; // buffers first (A..D order), Image last
+    std::vector<Pass> passes; // any order; the renderer sorts them
 
     const Pass* imagePass() const;
+    const Pass* volumePass() const;
 };
 
 }  // namespace sp

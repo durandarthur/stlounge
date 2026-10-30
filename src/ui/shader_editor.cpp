@@ -30,6 +30,13 @@ const std::vector<SourceItem>& sourceItems() {
         }
         {
             ChannelInput in;
+            in.type = InputType::VolumeBuffer;
+            in.bufferIndex = 0;
+            in.sampler = {Filter::Linear, Wrap::Clamp, false, false};
+            v.push_back({"Misc", "Volume A", in});
+        }
+        {
+            ChannelInput in;
             in.type = InputType::Audio;
             in.sampler = {Filter::Linear, Wrap::Clamp, false, false};
             v.push_back({"Misc", "Audio (desktop loopback)", in});
@@ -50,7 +57,7 @@ const std::vector<SourceItem>& sourceItems() {
         }
         // Listed so a shader's channels can be set up like on ShaderToy, with
         // a clear warning instead of silently missing inputs.
-        for (const char* what : {"Cubemap A", "Volume A", "Keyboard", "Webcam", "Video"}) {
+        for (const char* what : {"Cubemap A", "Keyboard", "Webcam", "Video"}) {
             ChannelInput in;
             in.type = InputType::Unsupported;
             in.unsupportedWhat = what;
@@ -103,8 +110,8 @@ void ShaderEditor::setShader(const Shader& shader) {
     info_ = shader.info;
     common_ = shader.common;
     for (const Pass& p : shader.passes) {
-        const int idx = p.type == PassType::Image ? 4 : p.bufferIndex;
-        if (idx < 0 || idx > 4) continue;
+        const int idx = p.type == PassType::Image ? 4 : p.type == PassType::Volume ? 5 : p.bufferIndex;
+        if (idx < 0 || idx > 5) continue;
         tabs_[static_cast<size_t>(idx)].code = p.code;
         tabs_[static_cast<size_t>(idx)].inputs = p.inputs;
     }
@@ -123,6 +130,14 @@ Shader ShaderEditor::build() const {
         p.code = t.code;
         p.inputs = t.inputs;
         s.passes.push_back(p);
+    }
+    if (!trimmed(tabs_[5].code).empty()) {
+        Pass v;
+        v.type = PassType::Volume;
+        v.bufferIndex = 0;
+        v.code = tabs_[5].code;
+        v.inputs = tabs_[5].inputs;
+        s.passes.push_back(v);
     }
     Pass image;
     image.type = PassType::Image;
@@ -183,13 +198,19 @@ void ShaderEditor::draw() {
         ImGui::InputTextMultiline("##common", &common_, ImVec2(-1, -1), ImGuiInputTextFlags_AllowTabInput);
         ImGui::EndTabItem();
     }
-    for (int i = 0; i < 5; ++i) {
+    // Tab order as on ShaderToy: Common, Volume A, Buffer A-D, Image.
+    for (int i : {5, 0, 1, 2, 3, 4}) {
         Tab& tab = tabs_[static_cast<size_t>(i)];
-        std::string name = i == 4 ? "Image" : std::string("Buffer ") + static_cast<char>('A' + i);
+        const std::string name = i == 4   ? "Image"
+                                 : i == 5 ? "Volume A"
+                                          : std::string("Buffer ") + static_cast<char>('A' + i);
         const bool hasCode = !trimmed(tab.code).empty();
-        const std::string label = name + (i < 4 && hasCode ? "*" : "") + "###tab" + std::to_string(i);
+        const std::string label = name + (i != 4 && hasCode ? "*" : "") + "###tab" + std::to_string(i);
         if (ImGui::BeginTabItem(label.c_str())) {
-            if (i < 4) ImGui::TextDisabled("Leave empty if the shader has no %s.", name.c_str());
+            if (i == 5)
+                ImGui::TextDisabled("Leave empty if unused. Defines mainVolume(out vec4, in vec3); 128^3, 1 channel.");
+            else if (i < 4)
+                ImGui::TextDisabled("Leave empty if the shader has no %s.", name.c_str());
             drawChannels(tab, i);
             ImGui::PushID(i);
             ImGui::InputTextMultiline("##code", &tab.code, ImVec2(-1, -1), ImGuiInputTextFlags_AllowTabInput);

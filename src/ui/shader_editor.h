@@ -14,7 +14,8 @@ public:
     ShaderEditor();
 
     void setShader(const Shader& shader);
-    // Buffer tabs with empty code are left out.
+    const ShaderInfo& info() const { return info_; }
+    // Buffer and Volume tabs with empty code are left out.
     Shader build() const;
     void clear();
 
@@ -29,7 +30,7 @@ private:
     void drawChannels(Tab& tab, int tabIndex);
 
     std::string common_;
-    std::array<Tab, 5> tabs_;  // 0-3 = Buffer A-D, 4 = Image
+    std::array<Tab, 6> tabs_;  // 0-3 = Buffer A-D, 4 = Image, 5 = Volume A
     ShaderInfo info_;
 };
 

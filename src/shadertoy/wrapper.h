@@ -14,7 +14,15 @@
 
 namespace sp {
 
+// Name of the per-slice z uniform in Volume passes (fragCoord.z of the slice centre).
+inline constexpr const char* kVolumeSliceUniform = "shadertoy_volume_z";
+
 std::string wrapPass(const std::string& common, const Pass& pass);
+
+// True if a pass's output can change from frame to frame: it uses time,
+// frame, mouse or date uniforms, or reads buffers/audio. Used to render a
+// static Volume A only once.
+bool passIsDynamic(const std::string& common, const Pass& pass);
 
 // Rewrites driver log locations ("0:12(5):", "2(12) :", "ERROR: 2:12:") so
 // the source string number becomes the tab name. Unknown formats pass through.

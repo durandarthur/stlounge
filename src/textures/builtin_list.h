@@ -20,9 +20,14 @@ struct BuiltinTexture {
     int size;           // width (= height, = depth for volumes)
     TextureQuality quality;
     bool available;     // false until a generator exists
+    const char* stId;   // ShaderToy media id ("Xsf3zn"), "" if not yet known
+    const char* stHash; // file name hash in /media/a/<hash>.png, "" if not yet known
 };
 
 const std::vector<BuiltinTexture>& builtinTextures();
 const BuiltinTexture* findBuiltinTexture(const std::string& id);
+// Lookup from ShaderToy JSON: by media id, or by the hash in a /media/a/<hash>.<ext> path.
+const BuiltinTexture* findBuiltinByShadertoyId(const std::string& stId);
+const BuiltinTexture* findBuiltinByMediaPath(const std::string& path);
 
 }  // namespace sp

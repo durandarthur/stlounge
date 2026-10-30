@@ -23,6 +23,7 @@ option(SP_BUILD_TESTS "Build unit and headless GL tests" ON)
 
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
+find_package(nlohmann_json 3.2 REQUIRED)
 pkg_check_modules(SDL2   REQUIRED IMPORTED_TARGET sdl2)
 pkg_check_modules(EGL    REQUIRED IMPORTED_TARGET egl)
 pkg_check_modules(GLESV2 REQUIRED IMPORTED_TARGET glesv2)
@@ -51,6 +52,8 @@ add_library(sp_core STATIC
   src/platform/log.cpp
   src/platform/paths.cpp
   src/audio/analyser.cpp
+  src/library/library.cpp
+  src/shadertoy/json_format.cpp
   src/shadertoy/mouse.cpp
   src/shadertoy/shader.cpp
   src/shadertoy/uniforms.cpp
@@ -59,7 +62,7 @@ add_library(sp_core STATIC
   src/textures/procedural.cpp)
 target_include_directories(sp_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_compile_options(sp_core PRIVATE ${SP_WARNINGS})
-target_link_libraries(sp_core PUBLIC Threads::Threads)
+target_link_libraries(sp_core PUBLIC Threads::Threads nlohmann_json::nlohmann_json)
 
 # ---- Audio capture (libpulse; works on PipeWire through pipewire-pulse) ----
 add_library(sp_audio STATIC
@@ -82,9 +85,14 @@ target_link_libraries(sp_gfx PUBLIC sp_core PkgConfig::GLESV2 PkgConfig::EGL)
 # ---- App: window, UI, main loop. ----
 add_library(sp_app STATIC
   src/app/app.cpp
+  src/app/app_library.cpp
+  src/app/app_ui.cpp
+  src/app/demos.cpp
   src/app/hotkeys.cpp
   src/platform/window.cpp
+  src/ui/file_browser.cpp
   src/ui/overlay.cpp
+  src/ui/paste_dialog.cpp
   src/ui/shader_editor.cpp)
 target_compile_options(sp_app PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_app PUBLIC sp_gfx sp_audio imgui PkgConfig::SDL2 PkgConfig::EGL)

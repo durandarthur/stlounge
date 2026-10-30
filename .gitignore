@@ -5,3 +5,5 @@ compile_commands.json
 *.AppImage
 # Fallback data folder used when XDG folders can't be created
 /*-data/
+# Real shaders by other authors, used only for local tests (not committed).
+/tests/data/private/

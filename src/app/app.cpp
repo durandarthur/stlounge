@@ -8,7 +8,7 @@
 #include <cmath>
 #include <ctime>
 
-#include "app/builtin_shader.h"
+#include "app/demos.h"
 #include "app_info.h"
 #include "gfx/gl.h"
 #include "gfx/program.h"
@@ -22,44 +22,6 @@ constexpr double kFallbackFpsCap = 60.0;  // used only when vsync is unavailable
 
 double seconds(uint64_t ticks) {
     return static_cast<double>(ticks) / static_cast<double>(SDL_GetPerformanceFrequency());
-}
-
-Shader makeImageShader(const std::string& name, const std::string& code) {
-    Shader s;
-    s.info.name = name;
-    Pass image;
-    image.type = PassType::Image;
-    image.code = code;
-    s.passes.push_back(image);
-    return s;
-}
-
-Shader makeMultipassDemo() {
-    Shader s;
-    s.info.name = "Multipass demo";
-    Pass a;
-    a.type = PassType::Buffer;
-    a.bufferIndex = 0;
-    a.code = kDemoBufferA;
-    a.inputs[0].type = InputType::Buffer;
-    a.inputs[0].bufferIndex = 0;
-    a.inputs[0].sampler = {Filter::Linear, Wrap::Clamp, false, false};
-    Pass image;
-    image.type = PassType::Image;
-    image.code = kDemoImage;
-    image.inputs[0] = a.inputs[0];
-    image.inputs[1].type = InputType::Texture;
-    image.inputs[1].asset = "rgba_noise_medium";
-    image.inputs[1].sampler = {Filter::Mipmap, Wrap::Repeat, true, false};
-    s.passes = {a, image};
-    return s;
-}
-
-Shader makeAudioDemo() {
-    Shader s = makeImageShader("Audio demo", kDemoAudio);
-    s.passes[0].inputs[0].type = InputType::Audio;
-    s.passes[0].inputs[0].sampler = {Filter::Linear, Wrap::Clamp, false, false};
-    return s;
 }
 
 }  // namespace
@@ -123,9 +85,11 @@ bool App::startup(const AppOptions& opts) {
         LOG_ERROR("UI could not be initialised; continuing without it");
     }
 
-    const Shader pattern = makeImageShader("Built-in test pattern", kBuiltinShader);
-    editor_.setShader(pattern);
-    loadShader(pattern);
+    library_ = std::make_unique<ShaderLibrary>(paths_.dataDir / "shaders");
+    library_->scan();
+    LOG_INFO("library: %zu shaders in %s", library_->entries().size(), library_->dir().c_str());
+
+    loadShader(makeTestPattern());
     return true;
 }
 
@@ -177,8 +141,9 @@ int App::run(const AppOptions& opts) {
 
 // ---------------------------------------------------------------- shaders
 
-void App::loadShader(const Shader& shader) {
+void App::loadShader(const Shader& shader, const std::string& libraryId) {
     pending_ = std::make_unique<ShaderRenderer>(renderContext_);
+    pendingLibraryId_ = libraryId;
     pending_->load(shader);
     LOG_INFO("compiling '%s'%s", shader.info.name.c_str(), caps_.parallelCompile ? " (background)" : "");
 }
@@ -190,6 +155,7 @@ void App::updateLoading() {
             LOG_INFO("'%s' ready (compile %.0f ms)", pending_->shader().info.name.c_str(), pending_->compileMs());
             for (const std::string& w : pending_->warnings()) LOG_WARN("%s", w.c_str());
             current_ = std::move(pending_);
+            currentLibraryId_ = pendingLibraryId_;
             clock_.reset();
             mouse_.reset();
             errorLog_.clear();
@@ -228,6 +194,18 @@ void App::handleEvent(const SDL_Event& e) {
         case SDL_MOUSEBUTTONUP:
         case SDL_MOUSEMOTION:
             handleMouse(e);
+            break;
+        case SDL_DROPFILE:
+            if (e.drop.file) {
+                importFile(e.drop.file);
+                SDL_free(e.drop.file);
+            }
+            break;
+        case SDL_DROPTEXT:
+            if (e.drop.file) {
+                openPasteDialog(e.drop.file);
+                SDL_free(e.drop.file);
+            }
             break;
         default:
             break;
@@ -283,10 +261,16 @@ void App::doAction(Action a) {
             paused_ = !paused_;
             LOG_INFO("%s", paused_ ? "paused" : "resumed");
             break;
+        case Action::Paste: {
+            char* text = SDL_GetClipboardText();
+            openPasteDialog(text ? text : "");
+            SDL_free(text);
+            break;
+        }
         case Action::Reload:
             if (current_) {
                 const Shader copy = current_->shader();
-                loadShader(copy);
+                loadShader(copy, currentLibraryId_);
             }
             break;
         default:
@@ -357,85 +341,6 @@ void App::renderFrame(double dt) {
     }
 }
 
-// ---------------------------------------------------------------- UI
-
-void App::drawUi() {
-    drawInfoPanel();
-    if (showEditor_) drawEditor();
-    if (!errorLog_.empty()) drawErrors();
-}
-
-void App::drawInfoPanel() {
-    ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(460, 0), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(APP_DISPLAY_NAME " - info")) {
-        if (current_) {
-            ImGui::Text("Shader: %s", current_->shader().info.name.c_str());
-            ImGui::Text("Compile time: %.0f ms", current_->compileMs());
-        } else {
-            ImGui::TextDisabled("No shader running");
-        }
-        if (pending_) ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "Compiling...");
-        if (current_)
-            for (const std::string& w : current_->warnings())
-                ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "%s", w.c_str());
-        ImGui::Text("iTime %.2f   iFrame %d   %s", clock_.time(), clock_.frame(), paused_ ? "[PAUSED]" : "");
-        float m[4];
-        mouse_.uniform(m);
-        ImGui::Text("iMouse (%.0f, %.0f, %.0f, %.0f)", m[0], m[1], m[2], m[3]);
-        ImGui::Text("iResolution %d x %d", imageTarget_.width(), imageTarget_.height());
-        if (ImGui::SliderFloat("Render scale", &renderScale_, 0.25f, 2.0f, "%.2f"))
-            renderScale_ = std::round(renderScale_ * 20.0f) / 20.0f;
-
-        ImGui::Separator();
-        int ww = 0, wh = 0, dw = 0, dh = 0;
-        SDL_GetWindowSize(window_.sdl(), &ww, &wh);
-        window_.drawableSize(&dw, &dh);
-        ImGui::Text("%.1f FPS (%.2f ms)  vsync interval %d", fps_, frameMs_, window_.swapInterval());
-        ImGui::Text("Window %dx%d, drawable %dx%d%s", ww, wh, dw, dh, window_.isFullscreen() ? ", fullscreen" : "");
-        if (ImGui::CollapsingHeader("GPU")) {
-            ImGui::Text("Video driver: %s", window_.videoDriver());
-            ImGui::TextWrapped("Renderer: %s", caps_.renderer.c_str());
-            ImGui::TextWrapped("Version: %s", caps_.version.c_str());
-            ImGui::Text("Buffers: %s%s", bufferFormatName(caps_.bufferFormat),
-                        caps_.bufferLinearFilter ? "" : " (nearest only)");
-            ImGui::Text("Parallel shader compile: %s", caps_.parallelCompile ? "yes" : "no");
-        }
-        drawAudioSection();
-        ImGui::Checkbox("Show test editor", &showEditor_);
-        ImGui::TextDisabled("Space pause  F5 reload  H/Tab hide UI  F/F11 fullscreen");
-    }
-    ImGui::End();
-}
-
-void App::drawEditor() {
-    ImGui::SetNextWindowPos(ImVec2(500, 16), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(700, 560), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Shader editor (temporary)", &showEditor_)) {
-        if (ImGui::Button("Compile")) {
-            Shader s = editor_.build();
-            s.info.name = "Editor";
-            loadShader(s);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Clear all")) editor_.clear();
-        ImGui::SameLine();
-        if (ImGui::Button("Test pattern")) editor_.setShader(makeImageShader("Built-in test pattern", kBuiltinShader));
-        ImGui::SameLine();
-        if (ImGui::Button("Load multipass demo")) {
-            editor_.setShader(makeMultipassDemo());
-            loadShader(makeMultipassDemo());
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Load audio demo")) {
-            editor_.setShader(makeAudioDemo());
-            loadShader(makeAudioDemo());
-        }
-        editor_.draw();
-    }
-    ImGui::End();
-}
-
 void App::updateAudio(double now) {
     const bool needed = current_ && current_->usesAudio();
     const AudioCapture::State st = audio_.state();
@@ -480,65 +385,6 @@ void App::updateAudio(double now) {
         std::fill(std::begin(audioFrequency_), std::end(audioFrequency_), uint8_t{0});
         audioTextureSilent_ = true;
     }
-}
-
-void App::drawAudioSection() {
-    if (!ImGui::CollapsingHeader("Audio")) return;
-    switch (audio_.state()) {
-        case AudioCapture::State::Off:
-            ImGui::TextDisabled("Capture off (the current shader has no audio input)");
-            break;
-        case AudioCapture::State::Connecting:
-            ImGui::Text("Connecting...");
-            break;
-        case AudioCapture::State::Running:
-            ImGui::TextWrapped("Capturing from %s", audio_.sourceName().c_str());
-            break;
-        case AudioCapture::State::Failed:
-            ImGui::TextColored(ImVec4(1, 0.45f, 0.4f, 1), "Audio unavailable: %s", audio_.error().c_str());
-            ImGui::TextDisabled("Audio inputs stay silent. Retrying every 10 s.");
-            break;
-    }
-
-    if (!audioSourcesListed_) {
-        audioSources_ = AudioCapture::listSources(&audioListError_);
-        audioSourcesListed_ = true;
-    }
-    std::string current = "Default output (follows changes)";
-    for (const AudioSource& src : audioSources_)
-        if (src.name == audioDevice_) current = src.description;
-    if (ImGui::BeginCombo("Source", current.c_str())) {
-        if (ImGui::Selectable("Default output (follows changes)", audioDevice_.empty())) audioDevice_.clear();
-        for (const AudioSource& src : audioSources_) {
-            const std::string label = (src.isMonitor ? "Output: " : "Input: ") + src.description;
-            if (ImGui::Selectable(label.c_str(), src.name == audioDevice_)) audioDevice_ = src.name;
-        }
-        ImGui::EndCombo();
-        if (audioDevice_ != audio_.requestedDevice() && audio_.state() != AudioCapture::State::Off) {
-            audio_.start(audioDevice_);
-            audioFailedAt_ = -1;
-        }
-    }
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Refresh")) audioSourcesListed_ = false;
-    if (!audioListError_.empty()) ImGui::TextDisabled("%s", audioListError_.c_str());
-
-    float bins[SpectrumAnalyser::kBins];
-    for (int i = 0; i < SpectrumAnalyser::kBins; ++i) bins[i] = audioFrequency_[i];
-    ImGui::PlotHistogram("##fft", bins, SpectrumAnalyser::kBins, 0, "FFT (texture row 0)", 0.0f, 255.0f,
-                         ImVec2(-1, 60));
-}
-
-void App::drawErrors() {
-    ImGui::SetNextWindowPos(ImVec2(16, 420), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(620, 220), ImGuiCond_FirstUseEver);
-    bool open = true;
-    if (ImGui::Begin("Shader errors", &open)) {
-        ImGui::TextColored(ImVec4(1, 0.45f, 0.4f, 1), "Compile failed. The previous shader keeps running.");
-        ImGui::InputTextMultiline("##log", &errorLog_, ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
-    }
-    ImGui::End();
-    if (!open) errorLog_.clear();
 }
 
 void App::limitFrameRate(uint64_t frameStart) {

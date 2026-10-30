@@ -61,11 +61,13 @@ private:
         GLint resolution = -1, time = -1, timeDelta = -1, frameRate = -1, frame = -1;
         GLint channelTime = -1, channelResolution = -1, mouse = -1, date = -1, sampleRate = -1;
         GLint channel[4] = {-1, -1, -1, -1};
+        GLint volumeZ = -1;
     };
     struct Binding {
         GLenum target = GL_TEXTURE_2D;
         GLuint texture = 0;    // fixed texture, unless bufferIndex >= 0
         int bufferIndex = -1;  // read the buffer's latest output
+        bool volume = false;   // read Volume A's latest output
         bool audio = false;
         GLuint sampler = 0;
         float resolution[3] = {0, 0, 0};
@@ -84,17 +86,35 @@ private:
         bool needsMipmaps = false;
     };
 
+    // Volume A: 128^3 single-channel 3D texture, drawn slice by slice.
+    struct VolumeTargets {
+        static constexpr int kSize = 128;
+        GLuint textures[2] = {0, 0};
+        GLuint fbo = 0;
+        int read = 0;
+        bool exists = false;
+        bool selfRead = false;   // reads its own previous frame: needs two textures
+        bool dynamic = true;     // false: rendered once (uses no time/mouse/changing inputs)
+        bool rendered = false;
+        bool failed = false;
+    };
+
     void resolveBindings(PassRuntime& p);
+    bool ensureVolume();
+    void destroyVolume();
     GLuint makeSampler(const SamplerSettings& s, bool allowLinear, bool hasMipmaps);
     void lookupLocations(PassRuntime& p);
     void ensureBuffers(int width, int height);
-    void drawPass(PassRuntime& p, const FrameUniforms& u, GLuint fbo, int width, int height);
+    // slices > 0: draw into each layer of the volume texture `volumeTexture`.
+    void drawPass(PassRuntime& p, const FrameUniforms& u, GLuint fbo, int width, int height, int slices = 0,
+                  GLuint volumeTexture = 0);
     void warn(const std::string& message);
 
     RenderContext ctx_;
     Shader shader_;
     std::vector<std::unique_ptr<PassRuntime>> passes_;  // A, B, C, D, Image order
     std::array<BufferTargets, 4> buffers_;
+    VolumeTargets volume_;
     std::vector<GLuint> samplers_;
     State state_ = State::Empty;
     std::string errorLog_;

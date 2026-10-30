@@ -10,7 +10,8 @@ namespace {
 const char* samplerType(InputType t) {
     switch (t) {
         case InputType::Cubemap: return "samplerCube";
-        case InputType::Volume: return "sampler3D";
+        case InputType::Volume:
+        case InputType::VolumeBuffer: return "sampler3D";
         default: return "sampler2D";
     }
 }
@@ -58,8 +59,18 @@ std::string wrapPass(const std::string& common, const Pass& pass) {
 
     std::string head = s.str();
     std::ostringstream tail;
-    tail << "#line " << countLines(head) + 1 << " " << kStringWrapper << "\n"
-         << "void main() {\n"
+    tail << "#line " << countLines(head) + 1 << " " << kStringWrapper << "\n";
+    if (pass.type == PassType::Volume) {
+        // One draw per slice; the app sets the slice centre.
+        tail << "uniform float " << kVolumeSliceUniform << ";\n"
+             << "void main() {\n"
+                "    vec4 color = vec4(0.0, 0.0, 0.0, 1.0);\n"
+                "    mainVolume(color, vec3(gl_FragCoord.xy, " << kVolumeSliceUniform << "));\n"
+                "    shadertoy_out_color = color;\n"
+                "}\n";
+        return head + tail.str();
+    }
+    tail << "void main() {\n"
             "    vec4 color = vec4(0.0, 0.0, 0.0, 1.0);\n"
             "    mainImage(color, gl_FragCoord.xy);\n";
     if (pass.type == PassType::Image)
@@ -68,6 +79,14 @@ std::string wrapPass(const std::string& common, const Pass& pass) {
         tail << "    shadertoy_out_color = color;\n";
     tail << "}\n";
     return head + tail.str();
+}
+
+bool passIsDynamic(const std::string& common, const Pass& pass) {
+    for (const ChannelInput& in : pass.inputs)
+        if (in.type == InputType::Buffer || in.type == InputType::Audio || in.type == InputType::VolumeBuffer)
+            return true;
+    static const std::regex dynamicUniform(R"(\b(iTime|iTimeDelta|iFrame|iFrameRate|iMouse|iDate|iChannelTime)\b)");
+    return std::regex_search(common, dynamicUniform) || std::regex_search(pass.code, dynamicUniform);
 }
 
 std::string remapCompileLog(const std::string& log, const std::string& passName) {

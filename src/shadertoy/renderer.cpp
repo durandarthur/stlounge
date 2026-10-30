@@ -32,6 +32,75 @@ ShaderRenderer::~ShaderRenderer() {
     for (auto& p : passes_)
         if (p->program) glDeleteProgram(p->program);
     if (!samplers_.empty()) glDeleteSamplers(static_cast<GLsizei>(samplers_.size()), samplers_.data());
+    destroyVolume();
+}
+
+void ShaderRenderer::destroyVolume() {
+    for (GLuint& t : volume_.textures)
+        if (t) glDeleteTextures(1, &t), t = 0;
+    if (volume_.fbo) glDeleteFramebuffers(1, &volume_.fbo), volume_.fbo = 0;
+}
+
+bool ShaderRenderer::ensureVolume() {
+    if (!volume_.exists || volume_.failed) return false;
+    if (volume_.textures[0]) return true;
+
+    // ShaderToy: 128^3, 1 channel, Float32, linear. Fall back if not renderable.
+    struct Candidate {
+        GLenum internal, format, type;
+        bool ok;
+        const char* name;
+    };
+    const GlCaps& c = *ctx_.caps;
+    const bool f32 = c.has("GL_EXT_color_buffer_float");
+    const bool f16 = f32 || c.has("GL_EXT_color_buffer_half_float");
+    const Candidate candidates[] = {
+        // R32F only if it can also be filtered linearly; R16F and R8 always can.
+        {GL_R32F, GL_RED, GL_FLOAT, f32 && c.has("GL_OES_texture_float_linear"), "R32F"},
+        {GL_R16F, GL_RED, GL_HALF_FLOAT, f16, "R16F"},
+        {GL_R8, GL_RED, GL_UNSIGNED_BYTE, true, "R8"},
+    };
+    const int n = VolumeTargets::kSize;
+    const int count = volume_.selfRead ? 2 : 1;
+    glGenFramebuffers(1, &volume_.fbo);
+    for (const Candidate& cand : candidates) {
+        if (!cand.ok) continue;
+        while (glGetError() != GL_NO_ERROR) {}
+        bool good = true;
+        for (int i = 0; i < count && good; ++i) {
+            glGenTextures(1, &volume_.textures[i]);
+            glBindTexture(GL_TEXTURE_3D, volume_.textures[i]);
+            glTexImage3D(GL_TEXTURE_3D, 0, static_cast<GLint>(cand.internal), n, n, n, 0, cand.format, cand.type, nullptr);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glBindFramebuffer(GL_FRAMEBUFFER, volume_.fbo);
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, volume_.textures[i], 0, 0);
+            good = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE && glGetError() == GL_NO_ERROR;
+            if (good) {
+                // Start from zero, like buffers.
+                glViewport(0, 0, n, n);
+                glClearColor(0, 0, 0, 0);
+                for (int z = 0; z < n; ++z) {
+                    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, volume_.textures[i], 0, z);
+                    glClear(GL_COLOR_BUFFER_BIT);
+                }
+            }
+        }
+        glBindTexture(GL_TEXTURE_3D, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        if (good) {
+            if (cand.internal == GL_R32F) LOG_DEBUG("Volume A: %dx%dx%d %s", n, n, n, cand.name);
+            else LOG_WARN("Volume A: R32F not renderable here, using %s", cand.name);
+            return true;
+        }
+        for (GLuint& t : volume_.textures)
+            if (t) glDeleteTextures(1, &t), t = 0;
+    }
+    glDeleteFramebuffers(1, &volume_.fbo);
+    volume_.fbo = 0;
+    volume_.failed = true;
+    warn("Volume A: no renderable 3D texture format on this GPU; inputs reading it are black.");
+    return false;
 }
 
 void ShaderRenderer::warn(const std::string& message) {
@@ -43,6 +112,8 @@ void ShaderRenderer::load(const Shader& shader) {
         if (p->program) glDeleteProgram(p->program);
     passes_.clear();
     buffers_ = {};
+    destroyVolume();
+    volume_ = {};
     if (!samplers_.empty()) glDeleteSamplers(static_cast<GLsizei>(samplers_.size()), samplers_.data());
     samplers_.clear();
     shader_ = shader;
@@ -58,8 +129,17 @@ void ShaderRenderer::load(const Shader& shader) {
         return;
     }
 
-    // ShaderToy order: Buffer A, B, C, D, then Image (whatever the file order).
+    // Order: Volume A, Buffer A, B, C, D, then Image (whatever the file order).
+    // ShaderToy's exact position of Volume A is unknown; first lets buffers
+    // read this frame's volume.
     std::vector<const Pass*> ordered;
+    if (const Pass* vol = shader_.volumePass()) {
+        ordered.push_back(vol);
+        volume_.exists = true;
+        for (const ChannelInput& in : vol->inputs)
+            if (in.type == InputType::VolumeBuffer) volume_.selfRead = true;
+        volume_.dynamic = passIsDynamic(shader_.common, *vol);
+    }
     for (int b = 0; b < 4; ++b) {
         const Pass* found = nullptr;
         for (const Pass& p : shader_.passes) {
@@ -137,7 +217,11 @@ void ShaderRenderer::resolveBindings(PassRuntime& p) {
                     tex = nullptr;
                 }
                 if (!tex) {
-                    if (!desc)
+                    const std::string stPrefix = "shadertoy:";
+                    if (!desc && in.asset.rfind(stPrefix, 0) == 0)
+                        warn(where + "ShaderToy " + kindName(in.type) + " " + in.asset.substr(stPrefix.size()) +
+                             " isn't identified yet; using black.");
+                    else if (!desc)
                         warn(where + "unknown " + kindName(in.type) + " '" + in.asset + "'; using black.");
                     else if (!desc->available)
                         warn(where + "'" + desc->label + "' is not available yet; using black.");
@@ -168,6 +252,19 @@ void ShaderRenderer::resolveBindings(PassRuntime& p) {
                 if (in.sampler.filter == Filter::Mipmap && ctx_.caps->bufferLinearFilter)
                     buffers_[static_cast<size_t>(in.bufferIndex)].needsMipmaps = true;
                 b.sampler = makeSampler(in.sampler, ctx_.caps->bufferLinearFilter, ctx_.caps->bufferLinearFilter);
+                break;
+
+            case InputType::VolumeBuffer:
+                if (!volume_.exists) {
+                    warn(where + "reads Volume A, which this shader doesn't define; using black.");
+                    neutral(InputType::Volume);
+                    break;
+                }
+                b.target = GL_TEXTURE_3D;
+                b.volume = true;
+                b.texture = ctx_.neutral->volume();  // until the volume exists
+                b.resolution[0] = b.resolution[1] = b.resolution[2] = VolumeTargets::kSize;
+                b.sampler = makeSampler(in.sampler, true, false);  // every chosen format is filterable
                 break;
 
             case InputType::Audio:
@@ -236,6 +333,7 @@ void ShaderRenderer::lookupLocations(PassRuntime& p) {
         const std::string name = "iChannel" + std::to_string(i);
         l.channel[i] = glGetUniformLocation(prog, name.c_str());
     }
+    l.volumeZ = glGetUniformLocation(prog, kVolumeSliceUniform);
 }
 
 void ShaderRenderer::ensureBuffers(int width, int height) {
@@ -281,13 +379,15 @@ GLuint ShaderRenderer::bufferTexture(int index) const {
     return b.exists ? b.targets[b.read].texture() : 0;
 }
 
-void ShaderRenderer::drawPass(PassRuntime& p, const FrameUniforms& u, GLuint fbo, int width, int height) {
+void ShaderRenderer::drawPass(PassRuntime& p, const FrameUniforms& u, GLuint fbo, int width, int height, int slices,
+                              GLuint volumeTexture) {
     const Locations& l = p.loc;
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glViewport(0, 0, width, height);
     glUseProgram(p.program);
 
-    glUniform3f(l.resolution, static_cast<float>(width), static_cast<float>(height), 1.0f);
+    glUniform3f(l.resolution, static_cast<float>(width), static_cast<float>(height),
+                slices > 0 ? static_cast<float>(slices) : 1.0f);
     glUniform1f(l.time, u.time);
     glUniform1f(l.timeDelta, u.timeDelta);
     glUniform1f(l.frameRate, u.frameRate);
@@ -310,6 +410,9 @@ void ShaderRenderer::drawPass(PassRuntime& p, const FrameUniforms& u, GLuint fbo
             channelRes[i * 3 + 0] = static_cast<float>(rt.width());
             channelRes[i * 3 + 1] = static_cast<float>(rt.height());
             channelRes[i * 3 + 2] = 1.0f;
+        } else if (b.volume) {
+            if (volume_.textures[volume_.read]) tex = volume_.textures[volume_.read];
+            for (int k = 0; k < 3; ++k) channelRes[i * 3 + static_cast<size_t>(k)] = b.resolution[k];
         } else {
             if (b.audio && ctx_.audioTexture) tex = ctx_.audioTexture;
             for (int k = 0; k < 3; ++k) channelRes[i * 3 + static_cast<size_t>(k)] = b.resolution[k];
@@ -321,7 +424,15 @@ void ShaderRenderer::drawPass(PassRuntime& p, const FrameUniforms& u, GLuint fbo
     }
     glUniform3fv(l.channelResolution, 4, channelRes);
 
-    ctx_.triangle->draw();
+    if (slices > 0) {
+        for (int z = 0; z < slices; ++z) {
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, volumeTexture, 0, z);
+            glUniform1f(l.volumeZ, static_cast<float>(z) + 0.5f);
+            ctx_.triangle->draw();
+        }
+    } else {
+        ctx_.triangle->draw();
+    }
 
     for (int i = 3; i >= 0; --i) {
         glBindSampler(static_cast<GLuint>(i), 0);
@@ -342,6 +453,15 @@ void ShaderRenderer::render(const FrameUniforms& u, const RenderTarget& output) 
     for (auto& p : passes_) {
         if (p->def.type == PassType::Image) {
             drawPass(*p, u, output.framebuffer(), output.width(), output.height());
+            continue;
+        }
+        if (p->def.type == PassType::Volume) {
+            if (!ensureVolume() || (!volume_.dynamic && volume_.rendered)) continue;
+            const int dst = volume_.selfRead ? 1 - volume_.read : volume_.read;
+            const int n = VolumeTargets::kSize;
+            drawPass(*p, u, volume_.fbo, n, n, n, volume_.textures[dst]);
+            volume_.read = dst;
+            volume_.rendered = true;
             continue;
         }
         BufferTargets& buf = buffers_[static_cast<size_t>(p->def.bufferIndex)];
