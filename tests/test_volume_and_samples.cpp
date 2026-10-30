@@ -223,3 +223,112 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
         CHECK(px[1] > 0.9f && px[0] < 0.3f);  // green
     }
 }
+
+// Step 2 of docs/volume-a-check.md: the number-printing Image tab must compile and show
+// the expected values (checked by reading back what the volume holds, not the glyphs).
+TEST(volume_a_check_numbers_shader_compiles) {
+    Fixture f(320, 180);
+    Shader s;
+    Pass v;
+    v.type = PassType::Volume;
+    v.bufferIndex = 0;
+    v.code = R"GLSL(// Voxel (1,0,0) copies voxel (2,0,0) from the volume's previous frame,
+// i.e. the previous iFrame. Every other voxel stores the current iFrame.
+void mainVolume(out vec4 fragColor, in vec3 fragCoord)
+{
+    ivec3 q = ivec3(fragCoord);
+    if (q == ivec3(1, 0, 0))
+        fragColor = vec4(texelFetch(iChannel0, ivec3(2, 0, 0), 0).x);
+    else
+        fragColor = vec4(float(iFrame));
+}
+)GLSL";
+    v.inputs[0].type = InputType::VolumeBuffer;
+    v.inputs[0].bufferIndex = 0;
+    v.inputs[0].sampler = {Filter::Nearest, Wrap::Clamp, false, false};
+    Pass a;
+    a.type = PassType::Buffer;
+    a.bufferIndex = 0;
+    a.code = R"GLSL(// How many frames behind is the volume, as seen from Buffer A?
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    fragColor = vec4(float(iFrame) - texelFetch(iChannel0, ivec3(0), 0).x);
+}
+)GLSL";
+    a.inputs[0] = v.inputs[0];
+    Pass img;
+    img.type = PassType::Image;
+    img.code = R"GLSL(// Prints values with a tiny 3x5 pixel font, one number per row.
+float glyph(int g, vec2 q)
+{
+    // 0-9, '-', '.'; 3 bits per row, top row first.
+    const int font[12] = int[12](31599, 9362, 29671, 29391, 23497, 31183, 31215, 29257, 31727, 31695, 448, 2);
+    int bit = int(q.y) * 3 + (2 - int(q.x));
+    return float((font[g] >> bit) & 1);
+}
+
+float printValue(vec2 p, float v)
+{
+    if (p.x < 0.0 || p.y < 0.0 || p.y >= 5.0) return 0.0;
+    int cell = int(p.x / 4.0);
+    vec2 q = vec2(mod(p.x, 4.0), p.y);
+    if (q.x >= 3.0) return 0.0;
+    float a = abs(v);
+    int ip = int(a);
+    int nd = 1;
+    for (int t = ip; t >= 10; t /= 10) nd++;
+    int lead = v < 0.0 ? 1 : 0;
+    int g = -1;
+    if (cell < lead) g = 10;
+    else if (cell < lead + nd) {
+        int t = ip;
+        for (int i = 0; i < nd - 1 - (cell - lead); i++) t /= 10;
+        g = t % 10;
+    }
+    else if (cell == lead + nd) g = 11;
+    else if (cell == lead + nd + 1) g = int(fract(a) * 10.0);
+    return g < 0 ? 0.0 : glyph(g, q);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    float s = max(1.0, floor(iResolution.y / 90.0));  // font pixel size
+    vec2 p = fragCoord / s;
+    float top = floor(iResolution.y / s) - 2.0;
+    float r = floor((top - p.y) / 8.0);                 // row, from the top
+    vec2 q = vec2(p.x - 2.0, p.y - (top - 8.0 * r - 6.0));
+
+    float v = 0.0;
+    if      (r == 0.0) v = float(iFrame);
+    else if (r == 1.0) v = texelFetch(iChannel0, ivec2(0), 0).x;
+    else if (r == 2.0) v = texelFetch(iChannel1, ivec3(0, 0, 0), 0).x;
+    else if (r == 3.0) v = texelFetch(iChannel1, ivec3(1, 0, 0), 0).x;
+    else if (r == 4.0) v = texelFetch(iChannel1, ivec3(2, 0, 0), 0).x;
+    else if (r == 5.0) v = iChannelResolution[1].x;
+    else if (r == 6.0) v = iChannelResolution[1].y;
+    else if (r == 7.0) v = iChannelResolution[1].z;
+    else if (r == 8.0) v = iChannelResolution[0].x;
+    else if (r == 9.0) v = iChannelResolution[0].y;
+    float ink = r < 10.0 ? printValue(q, v) : 0.0;
+    fragColor = vec4(mix(vec3(0.05), vec3(1.0), ink), 1.0);
+}
+)GLSL";
+    img.inputs[0].type = InputType::Buffer;
+    img.inputs[0].bufferIndex = 0;
+    img.inputs[1] = v.inputs[0];
+    s.passes = {v, a, img};
+    ShaderRenderer r(f.ctx());
+    const auto st = f.compile(r, s);
+    if (st == ShaderRenderer::State::Failed) std::printf("    log: %s\n", r.errorLog().c_str());
+    REQUIRE(st == ShaderRenderer::State::Ready);
+    f.frames(r, 3);
+    // Some text was drawn: at least one bright pixel in the first row of numbers.
+    int ink = 0;
+    for (int y = 150; y < 180; ++y)
+        for (int x = 0; x < 60; ++x) {
+            float px[4];
+            f.pixel(x, y, px);
+            ink += px[0] > 0.5f;
+        }
+    CHECK(ink > 0);
+}

@@ -78,3 +78,77 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
 
 The bottom area is blue for the very first frame only (there is no previous frame yet).
 The check doesn't depend on when the shader started, so pausing or rewinding is fine.
+
+## Step 2: print the raw values
+
+The colours on shadertoy.com came out top-left blue, everything else red (2026-10-30), which no
+ordering explains. This replacement **Image** tab prints the values instead. Keep Volume A,
+Buffer A and the channels exactly as above (Image: iChannel0 = Buffer A, iChannel1 = Volume A),
+paste this over the Image code, then pause and read the rows from the top:
+
+| Row | Value | This app shows |
+|---|---|---|
+| 1 | `iFrame` in Image | N |
+| 2 | Buffer A's output: its `iFrame` minus the volume value it read | 0 |
+| 3 | voxel (0,0,0) as Image reads it | N |
+| 4 | voxel (1,0,0) as Image reads it | N − 1 |
+| 5 | voxel (2,0,0) as Image reads it | N |
+| 6–8 | Volume A size, `iChannelResolution[1]` x, y, z | 128, 128, 128 |
+| 9–10 | Buffer A size, `iChannelResolution[0]` x, y | the canvas size |
+
+```glsl
+// Prints values with a tiny 3x5 pixel font, one number per row.
+float glyph(int g, vec2 q)
+{
+    // 0-9, '-', '.'; 3 bits per row, top row first.
+    const int font[12] = int[12](31599, 9362, 29671, 29391, 23497, 31183, 31215, 29257, 31727, 31695, 448, 2);
+    int bit = int(q.y) * 3 + (2 - int(q.x));
+    return float((font[g] >> bit) & 1);
+}
+
+float printValue(vec2 p, float v)
+{
+    if (p.x < 0.0 || p.y < 0.0 || p.y >= 5.0) return 0.0;
+    int cell = int(p.x / 4.0);
+    vec2 q = vec2(mod(p.x, 4.0), p.y);
+    if (q.x >= 3.0) return 0.0;
+    float a = abs(v);
+    int ip = int(a);
+    int nd = 1;
+    for (int t = ip; t >= 10; t /= 10) nd++;
+    int lead = v < 0.0 ? 1 : 0;
+    int g = -1;
+    if (cell < lead) g = 10;
+    else if (cell < lead + nd) {
+        int t = ip;
+        for (int i = 0; i < nd - 1 - (cell - lead); i++) t /= 10;
+        g = t % 10;
+    }
+    else if (cell == lead + nd) g = 11;
+    else if (cell == lead + nd + 1) g = int(fract(a) * 10.0);
+    return g < 0 ? 0.0 : glyph(g, q);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    float s = max(1.0, floor(iResolution.y / 90.0));  // font pixel size
+    vec2 p = fragCoord / s;
+    float top = floor(iResolution.y / s) - 2.0;
+    float r = floor((top - p.y) / 8.0);                 // row, from the top
+    vec2 q = vec2(p.x - 2.0, p.y - (top - 8.0 * r - 6.0));
+
+    float v = 0.0;
+    if      (r == 0.0) v = float(iFrame);
+    else if (r == 1.0) v = texelFetch(iChannel0, ivec2(0), 0).x;
+    else if (r == 2.0) v = texelFetch(iChannel1, ivec3(0, 0, 0), 0).x;
+    else if (r == 3.0) v = texelFetch(iChannel1, ivec3(1, 0, 0), 0).x;
+    else if (r == 4.0) v = texelFetch(iChannel1, ivec3(2, 0, 0), 0).x;
+    else if (r == 5.0) v = iChannelResolution[1].x;
+    else if (r == 6.0) v = iChannelResolution[1].y;
+    else if (r == 7.0) v = iChannelResolution[1].z;
+    else if (r == 8.0) v = iChannelResolution[0].x;
+    else if (r == 9.0) v = iChannelResolution[0].y;
+    float ink = r < 10.0 ? printValue(q, v) : 0.0;
+    fragColor = vec4(mix(vec3(0.05), vec3(1.0), ink), 1.0);
+}
+```
