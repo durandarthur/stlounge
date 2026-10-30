@@ -179,7 +179,9 @@ void AudioCapture::connectStream() {
 
     pa_buffer_attr attr;
     std::memset(&attr, 0xff, sizeof(attr));  // (uint32_t)-1 = server default
-    attr.fragsize = 512 * sizeof(float);     // ~10 ms chunks: low latency for visuals
+    // 1024 frames (~21 ms) matches PipeWire's usual quantum, so we don't push
+    // the whole audio graph to a smaller one (more CPU, more glitch-prone).
+    attr.fragsize = 1024 * sizeof(float);
 
     std::string target = device_;
     if (target.empty()) target = defaultSink_.empty() ? "@DEFAULT_MONITOR@" : defaultSink_ + ".monitor";
