@@ -12,37 +12,41 @@ namespace sp {
 namespace {
 
 struct SourceItem {
+    const char* section;  // grouping in the dropdown, like ShaderToy's input picker
     std::string label;
-    ChannelInput input;  // type/asset/bufferIndex plus default sampler settings
+    ChannelInput input;   // type/asset/bufferIndex plus default sampler settings
 };
 
 const std::vector<SourceItem>& sourceItems() {
     static const std::vector<SourceItem> items = [] {
         std::vector<SourceItem> v;
-        v.push_back({"(none)", ChannelInput{}});
+        v.push_back({"Misc", "(none)", ChannelInput{}});
         for (int b = 0; b < 4; ++b) {
             ChannelInput in;
             in.type = InputType::Buffer;
             in.bufferIndex = b;
             in.sampler = {Filter::Linear, Wrap::Clamp, false, false};
-            v.push_back({std::string("Buffer ") + static_cast<char>('A' + b), in});
+            v.push_back({"Misc", std::string("Buffer ") + static_cast<char>('A' + b), in});
         }
         {
             ChannelInput in;
             in.type = InputType::Audio;
             in.sampler = {Filter::Linear, Wrap::Clamp, false, false};
-            v.push_back({"Audio (desktop loopback)", in});
+            v.push_back({"Misc", "Audio (desktop loopback)", in});
         }
-        for (const BuiltinTexture& t : builtinTextures()) {
-            ChannelInput in;
-            in.type = t.kind;
-            in.asset = t.id;
-            in.sampler = {Filter::Mipmap, Wrap::Repeat, t.kind != InputType::Cubemap, false};
-            std::string label = t.label;
-            if (t.kind == InputType::Cubemap) label += " [cubemap]";
-            if (t.kind == InputType::Volume) label += " [3D]";
-            if (!t.available) label += " (not available yet)";
-            v.push_back({label, in});
+        const std::pair<InputType, const char*> sections[] = {
+            {InputType::Texture, "Textures"}, {InputType::Cubemap, "Cubemaps"}, {InputType::Volume, "Volumes"}};
+        for (const auto& [kind, section] : sections) {
+            for (const BuiltinTexture& t : builtinTextures()) {
+                if (t.kind != kind) continue;
+                ChannelInput in;
+                in.type = t.kind;
+                in.asset = t.id;
+                in.sampler = {Filter::Mipmap, Wrap::Repeat, t.kind != InputType::Cubemap, false};
+                std::string label = t.label;
+                if (!t.available) label += " (not available yet)";
+                v.push_back({section, label, in});
+            }
         }
         return v;
     }();
@@ -68,8 +72,12 @@ std::string trimmed(const std::string& s) {
 std::string describeInput(const ChannelInput& in) {
     if (in.type == InputType::Unsupported)
         return "Unsupported: " + (in.unsupportedWhat.empty() ? std::string("unknown") : in.unsupportedWhat);
-    for (const SourceItem& item : sourceItems())
-        if (sameSource(item.input, in)) return item.label;
+    for (const SourceItem& item : sourceItems()) {
+        if (!sameSource(item.input, in)) continue;
+        if (in.type == InputType::Cubemap) return item.label + " (cubemap)";
+        if (in.type == InputType::Volume) return item.label + " (volume)";
+        return item.label;
+    }
     return "Unknown texture '" + in.asset + "'";
 }
 
@@ -130,7 +138,12 @@ void ShaderEditor::drawChannels(Tab& tab, int tabIndex) {
         ImGui::SetNextItemWidth(sourceWidth);
         const std::string preview = describeInput(in);
         if (ImGui::BeginCombo("##src", preview.c_str())) {
+            const char* section = nullptr;
             for (const SourceItem& item : sourceItems()) {
+                if (section != item.section) {
+                    section = item.section;
+                    ImGui::SeparatorText(section);
+                }
                 const bool selected = sameSource(item.input, in);
                 if (ImGui::Selectable(item.label.c_str(), selected)) in = item.input;
                 if (selected) ImGui::SetItemDefaultFocus();
