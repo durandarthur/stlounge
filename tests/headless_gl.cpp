@@ -46,7 +46,7 @@ bool HeadlessGl::create(std::string* error) {
     if (getPlatformDisplay && hasExt(clientExts, "EGL_MESA_platform_surfaceless")) {
         dpy = getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr);
         if (dpy != EGL_NO_DISPLAY && eglInitialize(dpy, nullptr, nullptr)) {
-            description_ = "EGL surfaceless (Mesa)";
+            description_ = "EGL surfaceless platform";
         } else {
             dpy = EGL_NO_DISPLAY;
         }

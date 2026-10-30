@@ -1,7 +1,9 @@
 // Compiles and renders real shaders on a headless GLES 3 context.
 
+#include <chrono>
 #include <cstdio>
 #include <string>
+#include <thread>
 
 #include "app/builtin_shader.h"
 #include "gfx/gl_caps.h"
@@ -38,10 +40,15 @@ struct Fixture {
     RenderContext ctx() const { return RenderContext{&caps, &tri, &neutral}; }
     bool floatTarget() const { return caps.bufferFormat == BufferFormat::RGBA32F; }
 
-    // Loads and waits for compilation (polling, like the app does).
+    // Loads and waits for compilation (polling, like the app does). Waits by
+    // time, not by poll count: background compiles on fast drivers can take
+    // longer than any fixed number of polls.
     ShaderRenderer::State compile(ShaderRenderer& r, const Shader& s) {
         r.load(s);
-        for (int i = 0; i < 100000 && r.update() == ShaderRenderer::State::Compiling; ++i) {}
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (r.update() == ShaderRenderer::State::Compiling && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (r.state() == ShaderRenderer::State::Compiling) std::printf("    still compiling after 30 s\n");
         return r.state();
     }
 
@@ -210,8 +217,9 @@ TEST(program_build_parallel_polling) {
     ProgramBuild b;
     b.start(kFullscreenVertexShader,
             "#version 300 es\nprecision highp float; out vec4 o; void main() { o = vec4(1); }", true);
-    int polls = 0;
-    while (b.poll() == ProgramBuild::Status::Pending && polls < 1000000) ++polls;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (b.poll() == ProgramBuild::Status::Pending && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     CHECK(b.status() == ProgramBuild::Status::Ready);
     GLuint p = b.takeProgram();
     CHECK(p != 0);
@@ -221,6 +229,7 @@ TEST(program_build_parallel_polling) {
 TEST(renderer_builtin_test_pattern_compiles) {
     Fixture f;
     ShaderRenderer r(f.ctx());
-    CHECK(f.compile(r, imageShader(kBuiltinShader)) == ShaderRenderer::State::Ready);
-    if (r.state() == ShaderRenderer::State::Failed) std::printf("    log: %s\n", r.errorLog().c_str());
+    const auto st = f.compile(r, imageShader(kBuiltinShader));
+    if (st == ShaderRenderer::State::Failed) std::printf("    log: %s\n", r.errorLog().c_str());
+    CHECK(st == ShaderRenderer::State::Ready);
 }
