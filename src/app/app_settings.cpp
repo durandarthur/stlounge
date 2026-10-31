@@ -55,7 +55,15 @@ void App::loadSettingsAtStartup() {
     settingsPath_ = paths_.configDir / "settings.json";
     sessionPath_ = paths_.stateDir / "session.json";
     std::vector<std::string> warnings;
-    if (!loadSettings(settingsPath_, &settings_, &warnings)) setStatus("Settings file unreadable; using defaults", true);
+    if (!loadSettings(settingsPath_, &settings_, &warnings)) {
+        // Keep the broken file: the next save would replace it, and it may hold hand edits.
+        std::error_code ec;
+        const fs::path bad = settingsPath_.string() + ".bad";
+        fs::copy_file(settingsPath_, bad, fs::copy_options::overwrite_existing, ec);
+        setStatus("The settings file can't be read, so defaults are used. A copy was kept as " +
+                      (ec ? settingsPath_.string() : bad.string()) + ".",
+                  true);
+    }
     for (const std::string& w : warnings) LOG_WARN("%s", w.c_str());
     savedSettings_ = settings_;
     LOG_INFO("settings: %s", settingsPath_.c_str());
