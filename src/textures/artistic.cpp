@@ -377,7 +377,7 @@ ImageData stars() {
 }
 
 ImageData wood() {
-    return paint(512, 512, [](float u, float v) {
+    return paint(1024, 1024, [](float u, float v) {
         const float t = v * 9.0f + 1.6f * tileFbm(u, v, 2, 6, 5, 1301);
         const float ring = t - std::floor(t);
         const float band = smoothstep(0.0f, 0.75f, ring) * (1.0f - smoothstep(0.85f, 1.0f, ring));

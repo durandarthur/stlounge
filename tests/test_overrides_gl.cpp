@@ -125,3 +125,40 @@ TEST(blitter_crossfade_mixes) {
     CHECK(px[2] > 58 && px[2] < 70);    // 0.25 * 255
     CHECK_EQ(px[3], 255);
 }
+
+TEST(texture_folder_replaces_built_ins) {
+    sptest::requireGl();
+    const fs::path dir = tempDir("sp_test_texture_folder");
+    writeSolidPng(dir, "Organic 2.png", 8, 8, 255, 0, 0);
+    writeSolidPng(dir, "forest.png", 4, 4, 0, 255, 0);         // a cubemap: ignored
+    writeSolidPng(dir, "holiday photo.png", 4, 4, 0, 255, 0);  // no such texture: ignored
+    TextureLibrary lib;
+    const GpuTexture* before = lib.get("organic2", true, false);  // already on the GPU
+    REQUIRE(before != nullptr);
+    const GLuint id = before->id;
+    CHECK_EQ(before->width, 1024);
+
+    CHECK_EQ(lib.setReplacementFolder(dir), 1);
+    CHECK(lib.usesUserImage("organic2"));
+    CHECK(!lib.usesUserImage("forest"));
+    const GpuTexture* t = lib.get("organic2", true, false);
+    REQUIRE(t != nullptr);
+    CHECK_EQ(t->id, id);  // updated in place
+    CHECK_EQ(t->width, 8);
+    uint8_t px[4];
+    readTexel(id, px);
+    CHECK(px[0] == 255 && px[1] == 0);
+
+    // An image chosen in Settings wins over the folder.
+    CHECK(lib.setOverride("organic2", writeSolidPng(dir / "..", "blue_override.png", 2, 2, 0, 0, 255).string()).empty());
+    CHECK_EQ(lib.get("organic2", true, false)->width, 2);
+    CHECK(lib.setOverride("organic2", "").empty());
+    CHECK_EQ(lib.get("organic2", true, false)->width, 8);
+
+    // Removing the image and rescanning brings the built-in back.
+    fs::remove(dir / "Organic 2.png");
+    CHECK_EQ(lib.setReplacementFolder(dir), 0);
+    CHECK(!lib.usesUserImage("organic2"));
+    CHECK_EQ(lib.get("organic2", true, false)->width, 1024);
+    CHECK_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
+}

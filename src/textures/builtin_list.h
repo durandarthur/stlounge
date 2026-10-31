@@ -29,5 +29,9 @@ const BuiltinTexture* findBuiltinTexture(const std::string& id);
 // Lookup from ShaderToy JSON: by media id, or by the hash in a /media/a/<hash>.<ext> path.
 const BuiltinTexture* findBuiltinByShadertoyId(const std::string& stId);
 const BuiltinTexture* findBuiltinByMediaPath(const std::string& path);
+// Lookup from an image file name (without extension) in the textures folder:
+// "Organic 2", "organic2", "RGBA_Noise_Medium" and "St. Peter's Basilica" all
+// match, ignoring case, spaces and punctuation.
+const BuiltinTexture* findBuiltinByFileName(const std::string& stem);
 
 }  // namespace sp

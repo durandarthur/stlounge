@@ -340,3 +340,20 @@ TEST(rgba_noise_makes_continuous_3d_noise) {
         }
     CHECK(worst < 1e-6);
 }
+
+TEST(builtin_lookup_by_file_name) {
+    auto id = [](const char* stem) {
+        const BuiltinTexture* t = findBuiltinByFileName(stem);
+        return std::string(t ? t->id : "");
+    };
+    CHECK_EQ(id("Organic 2"), std::string("organic2"));
+    CHECK_EQ(id("organic2"), std::string("organic2"));
+    CHECK_EQ(id("RGBA Noise Medium"), std::string("rgba_noise_medium"));
+    CHECK_EQ(id("rgba_noise_medium"), std::string("rgba_noise_medium"));
+    CHECK_EQ(id("St. Peter's Basilica"), std::string("st_peters"));
+    CHECK_EQ(id("ROCK-TILES"), std::string("rock_tiles"));
+    CHECK_EQ(id("Font 1"), std::string("font1"));
+    CHECK_EQ(id("Organic"), std::string(""));
+    CHECK_EQ(id(""), std::string(""));
+    CHECK_EQ(id("my holiday"), std::string(""));
+}

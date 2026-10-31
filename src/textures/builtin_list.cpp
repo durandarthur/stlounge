@@ -1,5 +1,7 @@
 #include "textures/builtin_list.h"
 
+#include <cctype>
+
 namespace sp {
 
 const std::vector<BuiltinTexture>& builtinTextures() {
@@ -53,7 +55,7 @@ const std::vector<BuiltinTexture>& builtinTextures() {
          "95b90082f799f48677b4f206d856ad572f1d178c676269eac6347631d4447258"},
         {"stars", "Stars", InputType::Texture, 512, Q::Approximation, true, "XdfGRn",
          "e6e5631ce1237ae4c05b3563eda686400a401df4548d0f9fad40ecac1659c46c"},
-        {"wood", "Wood", InputType::Texture, 512, Q::Approximation, true, "XsfGRn",
+        {"wood", "Wood", InputType::Texture, 1024, Q::Approximation, true, "XsfGRn",
          "1f7dca9c22f324751f2a5a59c9b181dfe3b5564a04b724c657732d0bf09c99db"},
         {"forest", "Forest", InputType::Cubemap, 512, Q::Approximation, true, "XsX3zn",
          "94284d43be78f00eb6b298e6d78656a1b34e2b91b34940d02f1ca8b22310e8a0"},
@@ -94,6 +96,23 @@ const BuiltinTexture* findBuiltinByMediaPath(const std::string& path) {
     if (file.empty()) return nullptr;
     for (const BuiltinTexture& t : builtinTextures())
         if (file == t.stHash) return &t;
+    return nullptr;
+}
+
+namespace {
+std::string squash(const std::string& s) {
+    std::string out;
+    for (char c : s)
+        if (std::isalnum(static_cast<unsigned char>(c))) out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return out;
+}
+}  // namespace
+
+const BuiltinTexture* findBuiltinByFileName(const std::string& stem) {
+    const std::string key = squash(stem);
+    if (key.empty()) return nullptr;
+    for (const BuiltinTexture& t : builtinTextures())
+        if (key == squash(t.label) || key == squash(t.id)) return &t;
     return nullptr;
 }
 

@@ -104,7 +104,7 @@ void App::drawCurrentShaderInfo() {
         for (const ChannelInput& in : p.inputs) {
             const BuiltinTexture* t =
                 in.type == InputType::Texture || in.type == InputType::Cubemap ? findBuiltinTexture(in.asset) : nullptr;
-            if (!t || t->quality != TextureQuality::Approximation || textures_.hasOverride(t->id)) continue;
+            if (!t || t->quality != TextureQuality::Approximation || textures_.usesUserImage(t->id)) continue;
             if (seen.insert(t->id).second) lookAlikes += (lookAlikes.empty() ? "" : ", ") + std::string(t->label);
         }
     if (!lookAlikes.empty()) {

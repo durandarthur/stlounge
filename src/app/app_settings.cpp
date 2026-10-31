@@ -75,6 +75,21 @@ void App::loadSettingsAtStartup() {
         const std::string error = textures_.setOverride(id, path);
         if (!error.empty()) LOG_WARN("texture override '%s': %s", id.c_str(), error.c_str());
     }
+    // Images named after a texture in <data>/textures replace it (a texture pack).
+    std::error_code ec;
+    const fs::path folder = paths_.dataDir / "textures";
+    fs::create_directories(folder, ec);
+    textures_.setReplacementFolder(folder);
+}
+
+void App::rescanTextureFolder() {
+    const int n = textures_.setReplacementFolder(textures_.replacementFolder());
+    setStatus("Textures folder: " + std::to_string(n) + (n == 1 ? " image" : " images") + " in use");
+    if (current_) {
+        LoadRequest req;
+        req.libraryId = currentLibraryId_;
+        loadShader(current_->shader(), req);
+    }
 }
 
 void App::applyTextureOverride(const std::string& id, const std::string& path) {
@@ -191,7 +206,14 @@ void App::drawSettingsPanel() {
     if (ImGui::CollapsingHeader("Audio")) drawAudioSourcePicker();
 
     if (ImGui::CollapsingHeader("Textures")) {
-        ImGui::TextWrapped("Use an image of yours (PNG, JPEG, BMP, TGA) for a built-in texture. Cubemaps and "
+        ImGui::TextWrapped("Images (PNG, JPEG, BMP, TGA) in this folder named after a texture, like "
+                           "'Organic 2.jpg', replace it:");
+        const std::string folder = textures_.replacementFolder().string();
+        ImGui::TextDisabled("%s", folder.c_str());
+        if (ImGui::SmallButton("Copy path")) SDL_SetClipboardText(folder.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Rescan folder")) rescanTextureFolder();
+        ImGui::TextWrapped("Or enter an image for one texture below (it wins over the folder). Cubemaps and "
                            "volumes can't be replaced yet.");
         if (ImGui::BeginTable("##tex", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
             for (const BuiltinTexture& t : builtinTextures()) {
@@ -200,7 +222,7 @@ void App::drawSettingsPanel() {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted(t.label);
-                if (!t.available && !textures_.hasOverride(t.id)) {
+                if (!t.available && !textures_.usesUserImage(t.id)) {
                     ImGui::SameLine();
                     ImGui::TextDisabled("(none yet)");
                 }
@@ -209,7 +231,10 @@ void App::drawSettingsPanel() {
                 const std::string saved = it == settings_.textureOverrides.end() ? "" : it->second;
                 std::string& path = textureEdits_.try_emplace(t.id, saved).first->second;
                 ImGui::SetNextItemWidth(-1);
-                if (ImGui::InputTextWithHint("##path", "built-in", &path, ImGuiInputTextFlags_EnterReturnsTrue))
+                const std::string inFolder = textures_.folderImage(t.id);
+                const std::string hint =
+                    inFolder.empty() ? "built-in" : "folder: " + fs::path(inFolder).filename().string();
+                if (ImGui::InputTextWithHint("##path", hint.c_str(), &path, ImGuiInputTextFlags_EnterReturnsTrue))
                     applyTextureOverride(t.id, path);
                 else if (!ImGui::IsItemActive() && path != saved)
                     path = saved;  // abandoned edit
