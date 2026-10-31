@@ -1,0 +1,119 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "-1",
+    "name": "Volume A check, step 3",
+    "username": "",
+    "description": "See docs/volume-a-check.md, step 3",
+    "tags": []
+  },
+  "renderpass": [
+    {
+      "inputs": [
+        {
+          "channel": 0,
+          "type": "volume",
+          "id": "XsX3Rr",
+          "filepath": "/media/previz/volume00.png",
+          "sampler": {
+            "filter": "nearest",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "channel": 0,
+          "id": "XsX3Rr"
+        }
+      ],
+      "code": "// Four counters in voxels (0..3, 0, 0). iChannel0 = Volume A.\nvoid mainVolume(out vec4 fragColor, in vec3 fragCoord)\n{\n    ivec3 q = ivec3(fragCoord);\n    float v = float(iFrame);                                                          // (0,0,0) and (2,0,0)\n    if (q == ivec3(1, 0, 0)) v = texelFetch(iChannel0, ivec3(2, 0, 0), 0).x;          // (2,0,0) read back\n    if (q == ivec3(3, 0, 0)) v = texelFetch(iChannel0, ivec3(3, 0, 0), 0).x + 1.0;    // times drawn\n    fragColor = vec4(v);\n}\n",
+      "name": "Volume A",
+      "description": "",
+      "type": "volume"
+    },
+    {
+      "inputs": [
+        {
+          "channel": 0,
+          "type": "volume",
+          "id": "XsX3Rr",
+          "filepath": "/media/previz/volume00.png",
+          "sampler": {
+            "filter": "nearest",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        },
+        {
+          "channel": 1,
+          "type": "buffer",
+          "id": "4dXGR8",
+          "filepath": "/media/previz/buffer00.png",
+          "sampler": {
+            "filter": "nearest",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "channel": 0,
+          "id": "4dXGR8"
+        }
+      ],
+      "code": "// iChannel0 = Volume A, iChannel1 = Buffer A.\n// Stores: its iFrame, the volume's iFrame and draw count as it sees them, its own draw count.\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord)\n{\n    float runs = texelFetch(iChannel1, ivec2(0), 0).w + 1.0;\n    fragColor = vec4(float(iFrame),\n                     texelFetch(iChannel0, ivec3(0, 0, 0), 0).x,\n                     texelFetch(iChannel0, ivec3(3, 0, 0), 0).x,\n                     runs);\n}\n",
+      "name": "Buffer A",
+      "description": "",
+      "type": "buffer"
+    },
+    {
+      "inputs": [
+        {
+          "channel": 0,
+          "type": "buffer",
+          "id": "4dXGR8",
+          "filepath": "/media/previz/buffer00.png",
+          "sampler": {
+            "filter": "nearest",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        },
+        {
+          "channel": 1,
+          "type": "volume",
+          "id": "XsX3Rr",
+          "filepath": "/media/previz/volume00.png",
+          "sampler": {
+            "filter": "nearest",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "channel": 0,
+          "id": "4dfGRr"
+        }
+      ],
+      "code": "// iChannel0 = Buffer A, iChannel1 = Volume A. Prints one number per row.\nfloat glyph(int g, vec2 q)\n{\n    // 0-9, '-', '.'; 3 bits per row, top row first.\n    const int font[12] = int[12](31599, 9362, 29671, 29391, 23497, 31183, 31215, 29257, 31727, 31695, 448, 2);\n    int bit = int(q.y) * 3 + (2 - int(q.x));\n    return float((font[g] >> bit) & 1);\n}\n\nfloat printValue(vec2 p, float v)\n{\n    if (p.x < 0.0 || p.y < 0.0 || p.y >= 5.0) return 0.0;\n    int cell = int(p.x / 4.0);\n    vec2 q = vec2(mod(p.x, 4.0), p.y);\n    if (q.x >= 3.0) return 0.0;\n    float a = abs(v);\n    int ip = int(a);\n    int nd = 1;\n    for (int t = ip; t >= 10; t /= 10) nd++;\n    int lead = v < 0.0 ? 1 : 0;\n    int g = -1;\n    if (cell < lead) g = 10;\n    else if (cell < lead + nd) {\n        int t = ip;\n        for (int i = 0; i < nd - 1 - (cell - lead); i++) t /= 10;\n        g = t % 10;\n    }\n    else if (cell == lead + nd) g = 11;\n    else if (cell == lead + nd + 1) g = int(fract(a) * 10.0);\n    return g < 0 ? 0.0 : glyph(g, q);\n}\n\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord)\n{\n    float s = max(1.0, floor(iResolution.y / 90.0));  // font pixel size\n    vec2 p = fragCoord / s;\n    float top = floor(iResolution.y / s) - 2.0;\n    float r = floor((top - p.y) / 8.0);                 // row, from the top\n    vec2 q = vec2(p.x - 2.0, p.y - (top - 8.0 * r - 6.0));\n\n    vec4 a = texelFetch(iChannel0, ivec2(0), 0);\n    float v = 0.0;\n    if      (r == 0.0) v = float(iFrame);\n    else if (r == 1.0) v = a.x;   // Buffer A: its iFrame\n    else if (r == 2.0) v = a.y;   // Buffer A: volume's iFrame it saw\n    else if (r == 3.0) v = a.z;   // Buffer A: volume draw count it saw\n    else if (r == 4.0) v = a.w;   // Buffer A: its own draw count\n    else if (r == 5.0) v = texelFetch(iChannel1, ivec3(0, 0, 0), 0).x;\n    else if (r == 6.0) v = texelFetch(iChannel1, ivec3(1, 0, 0), 0).x;\n    else if (r == 7.0) v = texelFetch(iChannel1, ivec3(2, 0, 0), 0).x;\n    else if (r == 8.0) v = texelFetch(iChannel1, ivec3(3, 0, 0), 0).x;\n    float ink = r < 9.0 ? printValue(q, v) : 0.0;\n    fragColor = vec4(mix(vec3(0.05), vec3(1.0), ink), 1.0);\n}\n",
+      "name": "Image",
+      "description": "",
+      "type": "image"
+    }
+  ]
+}

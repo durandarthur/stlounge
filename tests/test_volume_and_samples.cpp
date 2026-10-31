@@ -332,3 +332,29 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
         }
     CHECK(ink > 0);
 }
+
+// Step 3 of docs/volume-a-check.md: run the JSON the doc ships and check the
+// counters Buffer A stores, which are what this app expects the site to show.
+TEST(volume_a_check_step3_counters) {
+    Fixture f(320, 180);
+    auto parsed = parseShadertoyJson(readText(fs::path(SP_TEST_DATA_DIR) / ".." / ".." / "docs" /
+                                              "volume-a-check-step3.json"));
+    REQUIRE(parsed.size() == size_t(1) && parsed[0].ok);
+    CHECK(parsed[0].warnings.empty());
+    ShaderRenderer r(f.ctx());
+    REQUIRE(f.compile(r, parsed[0].shader) == ShaderRenderer::State::Ready);
+    f.frames(r, 5);  // iFrame 0..4
+
+    GLuint fbo = 0;
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r.bufferTexture(0), 0);
+    float a[4] = {};
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_FLOAT, a);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &fbo);
+    CHECK_NEAR(a[0], 4.0f, 1e-3);  // Buffer A's iFrame
+    CHECK_NEAR(a[1], 4.0f, 1e-3);  // volume's iFrame it saw (this frame's)
+    CHECK_NEAR(a[2], 5.0f, 1e-3);  // volume drawn 5 times
+    CHECK_NEAR(a[3], 5.0f, 1e-3);  // Buffer A drawn 5 times
+}
