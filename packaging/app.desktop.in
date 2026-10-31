@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=@APP_DISPLAY_NAME@
+GenericName=Shader player
+Comment=Plays ShaderToy shaders as eye candy, with playlists and desktop audio
+Exec=@APP_NAME@
+Icon=@APP_NAME@
+Terminal=false
+Categories=Graphics;Viewer;
+Keywords=shadertoy;shader;glsl;visualizer;
+StartupWMClass=@APP_NAME@

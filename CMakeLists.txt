@@ -120,6 +120,10 @@ target_link_libraries(${APP_NAME} PRIVATE sp_app)
 include(GNUInstallDirs)
 install(TARGETS ${APP_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY assets/textures DESTINATION ${CMAKE_INSTALL_DATADIR}/${APP_NAME})
+configure_file(packaging/app.desktop.in ${CMAKE_BINARY_DIR}/generated/${APP_NAME}.desktop @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/generated/${APP_NAME}.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES packaging/icon.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+        RENAME ${APP_NAME}.svg)
 
 if(SP_BUILD_TESTS)
   enable_testing()
