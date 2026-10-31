@@ -51,7 +51,8 @@ const std::vector<SourceItem>& sourceItems() {
                 in.asset = t.id;
                 in.sampler = {Filter::Mipmap, Wrap::Repeat, t.kind != InputType::Cubemap, false};
                 std::string label = t.label;
-                if (!t.available) label += " (not available yet)";
+                if (!t.available) label += " (not available)";
+                else if (t.quality == TextureQuality::Approximation) label += " (look-alike)";
                 v.push_back({section, label, in});
             }
         }

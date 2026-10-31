@@ -221,7 +221,7 @@ TEST(channel_all_procedural_textures_upload) {
         if (t) CHECK(t->id != 0);
     }
     CHECK(f.textures.get("rgba_noise_medium", false, true) != nullptr);  // sRGB variant
-    CHECK(f.textures.get("wood", true, false) == nullptr);               // not available yet
+    CHECK(f.textures.get("not_a_texture", true, false) == nullptr);
     CHECK_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
 }
 
@@ -235,7 +235,7 @@ TEST(channel_problems_become_warnings_not_failures) {
     img.inputs[0].unsupportedWhat = "keyboard";
     readBuffer(img, 1, 2);  // Buffer C doesn't exist
     img.inputs[2].type = InputType::Texture;
-    img.inputs[2].asset = "wood";  // not available yet
+    img.inputs[2].asset = "shadertoy:Zz9Zz9";  // not identified
     img.inputs[3].type = InputType::Audio;
     s.passes = {img};
     ShaderRenderer r(f.ctx());
@@ -247,4 +247,43 @@ TEST(channel_problems_become_warnings_not_failures) {
     float px[4];
     f.pixel(0, 0, px);
     CHECK_EQ(px[0], 0.0f);  // everything black
+}
+
+TEST(channel_look_alike_textures_and_cubemaps) {
+    Fixture f;
+    Shader s;
+    // Cubemap: looking up must be sky (blue), looking down the ground (brown).
+    Pass img = image("void mainImage(out vec4 c, in vec2 p) {\n"
+                     "  vec3 up = texture(iChannel0, vec3(0.0, 1.0, 0.0)).rgb;\n"
+                     "  vec3 down = texture(iChannel0, vec3(0.0, -1.0, 0.0)).rgb;\n"
+                     "  c = p.x < 1.0 ? vec4(up, 1.0) : p.x < 2.0 ? vec4(down, 1.0)\n"
+                     "                : vec4(iChannelResolution[1].xy, iChannelResolution[2].x, 1.0); }");
+    img.inputs[0].type = InputType::Cubemap;
+    img.inputs[0].asset = "forest";
+    img.inputs[0].sampler = {Filter::Linear, Wrap::Clamp, true, false};  // vflip is ignored for cubemaps
+    img.inputs[1].type = InputType::Texture;
+    img.inputs[1].asset = "nyancat";
+    img.inputs[2].type = InputType::Texture;
+    img.inputs[2].asset = "font1";
+    s.passes = {img};
+    ShaderRenderer r(f.ctx());
+    f.compile(r, s);
+    for (const std::string& w : r.warnings()) std::printf("    warning: %s\n", w.c_str());
+    CHECK(r.warnings().empty());
+    f.frames(r, 1);
+    float up[4], down[4], res[4];
+    f.pixel(0, 0, up);
+    f.pixel(1, 0, down);
+    f.pixel(2, 0, res);
+    CHECK(up[2] > up[0] + 0.2f);    // blue sky
+    CHECK(down[0] > down[2]);       // brown ground
+    CHECK_EQ(res[0], 256.0f);
+    CHECK_EQ(res[1], 32.0f);
+    CHECK_EQ(res[2], 1024.0f);
+    for (const char* id : {"st_peters", "st_peters_blurred", "uffizi", "uffizi_blurred", "forest_blurred"}) {
+        const GpuTexture* t = f.textures.get(id, false, false);
+        REQUIRE(t != nullptr);
+        CHECK_EQ(t->target, static_cast<GLenum>(GL_TEXTURE_CUBE_MAP));
+    }
+    CHECK_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
 }

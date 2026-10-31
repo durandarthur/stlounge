@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "platform/log.h"
+#include "textures/artistic.h"
 #include "textures/builtin_list.h"
 #include "textures/image_io.h"
 
@@ -26,7 +27,8 @@ std::shared_ptr<const ImageData> generate(const std::string& id) {
     else if (id == "blue_noise") img = makeBlueNoise(1024, kBlueNoiseTile, 4, kSeedBlue);
     else if (id == "gray_noise_3d") img = makeNoiseVolume(32, 1, kSeedGray3d);
     else if (id == "rgba_noise_3d") img = makeNoiseVolume(32, 4, kSeedRgba3d);
-    else return nullptr;
+    else img = makeArtisticTexture(id);
+    if (img.width == 0) return nullptr;
     return std::make_shared<const ImageData>(std::move(img));
 }
 
@@ -102,6 +104,7 @@ const GpuTexture* TextureLibrary::get(const std::string& id, bool vflip, bool sr
     const BuiltinTexture* desc = findBuiltinTexture(id);
     if (!desc || (!desc->available && !hasOverride(id))) return nullptr;
 
+    if (desc->kind == InputType::Cubemap) vflip = false;  // faces are generated from directions
     const std::string key = id + (vflip ? "|flip" : "") + (srgb ? "|srgb" : "");
     if (auto it = gpu_.find(key); it != gpu_.end()) return &it->second;
 
@@ -109,16 +112,18 @@ const GpuTexture* TextureLibrary::get(const std::string& id, bool vflip, bool sr
     if (!src) return nullptr;
     GpuTexture tex;
     if (!upload(tex, *src, vflip, srgb, id)) return nullptr;
+    // Look-alikes are big and cheap to remake, so their CPU copy isn't kept around.
+    if (desc->quality == TextureQuality::Approximation && !hasOverride(id)) cpu_.erase(id);
     return &(gpu_[key] = tex);
 }
 
 bool TextureLibrary::upload(GpuTexture& t, const ImageData& src, bool vflip, bool srgb, const std::string& id) {
     ImageData img = src;
-    if (vflip) flipRows(img);
+    if (vflip && !img.cube) flipRows(img);
     t.width = img.width;
     t.height = img.height;
-    t.depth = img.depth;
-    t.target = img.depth > 1 ? GL_TEXTURE_3D : GL_TEXTURE_2D;
+    t.depth = img.cube ? 1 : img.depth;
+    t.target = img.cube ? GL_TEXTURE_CUBE_MAP : img.depth > 1 ? GL_TEXTURE_3D : GL_TEXTURE_2D;
     const bool rgba = img.channels == 4;
     // sRGB decoding exists only for RGBA8 in GLES; single-channel textures ignore it.
     const GLenum internal = rgba ? (srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8) : GL_R8;
@@ -129,7 +134,12 @@ bool TextureLibrary::upload(GpuTexture& t, const ImageData& src, bool vflip, boo
     if (fresh) glGenTextures(1, &t.id);
     glBindTexture(t.target, t.id);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    if (t.target == GL_TEXTURE_3D)
+    if (t.target == GL_TEXTURE_CUBE_MAP) {
+        const size_t face = static_cast<size_t>(img.width) * img.height * img.channels;
+        for (int f = 0; f < 6; ++f)
+            glTexImage2D(static_cast<GLenum>(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f), 0, static_cast<GLint>(internal),
+                         img.width, img.height, 0, format, GL_UNSIGNED_BYTE, img.pixels.data() + face * f);
+    } else if (t.target == GL_TEXTURE_3D)
         glTexImage3D(GL_TEXTURE_3D, 0, static_cast<GLint>(internal), img.width, img.height, img.depth, 0, format,
                      GL_UNSIGNED_BYTE, img.pixels.data());
     else

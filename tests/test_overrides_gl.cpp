@@ -55,8 +55,11 @@ TEST(texture_override_replaces_in_place) {
     sptest::requireGl();
     const fs::path dir = tempDir("sp_test_overrides");
     TextureLibrary lib;
-    // "abstract1" has no generator: only an override makes it available.
-    CHECK(lib.get("abstract1", false, false) == nullptr);
+    // "abstract1" is a generated look-alike until an image replaces it.
+    const GpuTexture* builtin = lib.get("abstract1", false, false);
+    REQUIRE(builtin != nullptr);
+    CHECK_EQ(builtin->width, 1024);
+    const GLuint builtinId = builtin->id;
     CHECK(TextureLibrary::canOverride("abstract1"));
     CHECK(!TextureLibrary::canOverride("forest"));  // a cubemap
 
@@ -65,6 +68,7 @@ TEST(texture_override_replaces_in_place) {
     REQUIRE(t != nullptr);
     CHECK(t->width == 8 && t->height == 4);
     const GLuint id = t->id;
+    CHECK_EQ(id, builtinId);  // replaced in place
     uint8_t px[4];
     readTexel(id, px);
     CHECK(px[0] == 255 && px[1] == 0);
@@ -78,10 +82,11 @@ TEST(texture_override_replaces_in_place) {
     readTexel(id, px);
     CHECK(px[0] == 0 && px[1] == 255);
 
-    // A broken file: error reported, and with no built-in the texture goes away.
+    // A broken file: error reported, and the look-alike comes back.
     std::ofstream(dir / "bad.png") << "nope";
     CHECK(!lib.setOverride("abstract1", (dir / "bad.png").string()).empty());
-    CHECK(lib.get("abstract1", false, false) == nullptr);
+    REQUIRE(lib.get("abstract1", false, false) != nullptr);
+    CHECK_EQ(lib.get("abstract1", false, false)->width, 1024);
 
     // Overriding a procedural texture, then removing the override, brings the built-in back.
     const GpuTexture* noise = lib.get("rgba_noise_small", false, false);

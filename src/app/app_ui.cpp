@@ -7,11 +7,13 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <set>
 
 #include "app/app.h"
 #include "app/demos.h"
 #include "app_info.h"
 #include "platform/log.h"
+#include "textures/builtin_list.h"
 #include "ui/imgui_util.h"
 
 namespace sp {
@@ -94,6 +96,22 @@ void App::drawCurrentShaderInfo() {
     }
     ImGui::Text("Compile time: %.0f ms", current_->compileMs());
     for (const std::string& w : current_->warnings()) textWrappedColored(kWarnColor, w);
+
+    // Look-alike textures make a shader look different from ShaderToy; say so.
+    std::string lookAlikes;
+    std::set<std::string> seen;
+    for (const Pass& p : current_->shader().passes)
+        for (const ChannelInput& in : p.inputs) {
+            const BuiltinTexture* t =
+                in.type == InputType::Texture || in.type == InputType::Cubemap ? findBuiltinTexture(in.asset) : nullptr;
+            if (!t || t->quality != TextureQuality::Approximation || textures_.hasOverride(t->id)) continue;
+            if (seen.insert(t->id).second) lookAlikes += (lookAlikes.empty() ? "" : ", ") + std::string(t->label);
+        }
+    if (!lookAlikes.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Uses look-alikes of ShaderToy textures, so it may look different: %s.", lookAlikes.c_str());
+        ImGui::PopTextWrapPos();
+    }
 }
 
 void App::drawInfoPanel() {

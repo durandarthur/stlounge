@@ -19,7 +19,7 @@ struct BuiltinTexture {
     InputType kind;     // Texture, Cubemap or Volume
     int size;           // width (= height, = depth for volumes)
     TextureQuality quality;
-    bool available;     // false until a generator exists
+    bool available;     // false if the app can't provide it
     const char* stId;   // ShaderToy media id ("Xsf3zn"), "" if not yet known
     const char* stHash; // file name hash in /media/a/<hash>.png, "" if not yet known
 };

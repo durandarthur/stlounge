@@ -63,13 +63,16 @@ add_library(sp_core STATIC
   src/shadertoy/shader_ref.cpp
   src/shadertoy/uniforms.cpp
   src/shadertoy/wrapper.cpp
+  src/textures/artistic.cpp
   src/textures/builtin_list.cpp
+  src/textures/font_texture.cpp
   src/textures/image_io.cpp
   src/textures/procedural.cpp)
 target_include_directories(sp_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_include_directories(sp_core SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/third_party/stb)
 target_compile_options(sp_core PRIVATE ${SP_WARNINGS})
-target_link_libraries(sp_core PUBLIC Threads::Threads nlohmann_json::nlohmann_json)
+# imgui only for Font 1: its embedded font file and stb_truetype (see textures/font_texture.cpp).
+target_link_libraries(sp_core PUBLIC Threads::Threads nlohmann_json::nlohmann_json PRIVATE imgui)
 
 # ---- Audio capture (libpulse; works on PipeWire through pipewire-pulse) ----
 add_library(sp_audio STATIC

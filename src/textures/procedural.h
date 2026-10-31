@@ -10,7 +10,8 @@
 namespace sp {
 
 struct ImageData {
-    int width = 0, height = 0, depth = 1;  // depth > 1 for volumes
+    int width = 0, height = 0, depth = 1;  // depth > 1 for volumes; 6 (one per face) for cubemaps
+    bool cube = false;                     // a cubemap: depth holds the 6 faces
     int channels = 4;                      // 1 (R8) or 4 (RGBA8)
     std::vector<uint8_t> pixels;           // width*height*depth*channels
 
