@@ -26,6 +26,7 @@ struct LibraryEntry {
     std::string loadError;  // set if the file can't be parsed (entry still listed)
     bool favorite = false;
     double duration = 0;    // auto-advance override in seconds, 0 = use the global setting
+    bool crashed = false;   // the app died while starting it (crash guard); skipped until retried
 };
 
 class ShaderLibrary {
@@ -56,6 +57,7 @@ public:
     // update the in-memory entry too, so no rescan is needed.
     bool setFavorite(const std::string& id, bool favorite, std::string* error);
     bool setDuration(const std::string& id, double seconds, std::string* error);
+    bool setCrashed(const std::string& id, bool crashed, std::string* error);
 
     // "local-1a2b3c4d": ids for shaders that don't come from shadertoy.com.
     static std::string newLocalId();

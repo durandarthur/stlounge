@@ -54,6 +54,7 @@ add_library(sp_core STATIC
   src/platform/paths.cpp
   src/audio/analyser.cpp
   src/config/settings.cpp
+  src/library/crash_guard.cpp
   src/library/library.cpp
   src/library/playlist_player.cpp
   src/library/playlists.cpp
@@ -95,6 +96,7 @@ target_link_libraries(sp_gfx PUBLIC sp_core PkgConfig::GLESV2 PkgConfig::EGL)
 # ---- App: window, UI, main loop. ----
 add_library(sp_app STATIC
   src/app/app.cpp
+  src/app/app_guard.cpp
   src/app/app_library.cpp
   src/app/app_playlist.cpp
   src/app/app_settings.cpp

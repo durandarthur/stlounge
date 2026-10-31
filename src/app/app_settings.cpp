@@ -231,6 +231,17 @@ void App::drawSettingsPanel() {
         helpMarker("Gives up on shaders that take longer than this to compile (and skips them in the playlist).");
         if (!caps_.parallelCompile)
             textWrappedColored(kErrorColor, "Your driver compiles in the foreground, so the cap can't interrupt it.");
+
+        bool guardOn = settings_.frameTimeGuardMs > 0;
+        if (ImGui::Checkbox("Skip shaders slower than", &guardOn)) settings_.frameTimeGuardMs = guardOn ? 1000 : 0;
+        if (guardOn) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8);
+            if (ImGui::InputInt("ms per frame", &settings_.frameTimeGuardMs, 100, 1000))
+                settings_.frameTimeGuardMs = std::clamp(settings_.frameTimeGuardMs, 200, 10000);
+        }
+        helpMarker("A shader this slow on your GPU can freeze the whole desktop, so it is skipped. "
+                   "Turn this off to run such shaders anyway (a lower render scale may also help).");
     }
 
     ImGui::Separator();

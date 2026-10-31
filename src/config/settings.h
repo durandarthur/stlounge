@@ -35,6 +35,7 @@ struct Settings {
 
     // Advanced
     int compileTimeCapMs = 0;  // 0 = off; else 100..60000 (needs parallel shader compile)
+    int frameTimeGuardMs = 1000;  // skip a shader whose frames take longer on the GPU; 0 = off, else 200..10000
 
     bool operator==(const Settings& o) const;
     bool operator!=(const Settings& o) const { return !(*this == o); }

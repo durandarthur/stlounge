@@ -56,7 +56,8 @@ bool Settings::operator==(const Settings& o) const {
     return fpsCap == o.fpsCap && renderScale == o.renderScale && autoAdvance == o.autoAdvance &&
            autoAdvanceSeconds == o.autoAdvanceSeconds && shuffle == o.shuffle && locked == o.locked &&
            crossfade == o.crossfade && crossfadeSeconds == o.crossfadeSeconds && audioSource == o.audioSource &&
-           textureOverrides == o.textureOverrides && compileTimeCapMs == o.compileTimeCapMs;
+           textureOverrides == o.textureOverrides && compileTimeCapMs == o.compileTimeCapMs &&
+           frameTimeGuardMs == o.frameTimeGuardMs;
 }
 
 Settings settingsFromJson(const json& j, std::vector<std::string>* warnings) {
@@ -76,6 +77,7 @@ Settings settingsFromJson(const json& j, std::vector<std::string>* warnings) {
     r.number("crossfade_seconds", &s.crossfadeSeconds, 0.1, 30);
     r.string("audio_source", &s.audioSource);
     r.number("compile_time_cap_ms", &s.compileTimeCapMs, 100, 60000, true);
+    r.number("frame_time_guard_ms", &s.frameTimeGuardMs, 200, 10000, true);
     if (j.contains("texture_overrides")) {
         const json& o = j["texture_overrides"];
         if (!o.is_object()) {
@@ -103,6 +105,7 @@ json settingsToJson(const Settings& s) {
     j["texture_overrides"] = json::object();
     for (const auto& [id, path] : s.textureOverrides) j["texture_overrides"][id] = path;
     j["compile_time_cap_ms"] = s.compileTimeCapMs;
+    j["frame_time_guard_ms"] = s.frameTimeGuardMs;
     return j;
 }
 

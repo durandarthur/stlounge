@@ -94,6 +94,9 @@ bool App::startup(const AppOptions& opts) {
 
     loadSettingsAtStartup();
 
+    crashGuard_ = std::make_unique<CrashGuard>(paths_.stateDir / "pending.json");
+    if (const std::optional<PendingShader> left = crashGuard_->takeLeftover()) handleCrashLeftover(*left);
+
     const Session session = loadSession(sessionPath_);
     lastSavedSessionShader_ = session.lastShader;
     lastSavedSessionPlaylist_ = session.playlist;
@@ -105,7 +108,7 @@ bool App::startup(const AppOptions& opts) {
     if (opts.safeMode) {
         LOG_INFO("safe mode: not loading the last shader");
         loadShader(makeTestPattern());
-    } else if (!session.lastShader.empty() && library_->find(session.lastShader)) {
+    } else if (const LibraryEntry* last = library_->find(session.lastShader); last && !last->crashed) {
         LOG_INFO("resuming '%s'", session.lastShader.c_str());
         LoadRequest req;
         req.fromPlaylist = player_.contains(session.lastShader);
@@ -130,6 +133,8 @@ int App::run(const AppOptions& opts) {
         const uint64_t frameStart = SDL_GetPerformanceCounter();
         const double dt = seconds(frameStart - lastFrame);
         lastFrame = frameStart;
+        // A frame that took long overall gets its GPU time measured next time.
+        measureNextFrame_ = settings_.frameTimeGuardMs > 0 && dt * 1000.0 > 0.5 * settings_.frameTimeGuardMs;
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) handleEvent(e);
@@ -149,6 +154,7 @@ int App::run(const AppOptions& opts) {
         updateAutoAdvance(dt);
         updateAudio(seconds(frameStart));
         renderFrame(dt);
+        updateCrashGuard();
         window_.swap();
         pollScreenshot();
         saveSettingsIfChanged(false);
@@ -166,6 +172,7 @@ int App::run(const AppOptions& opts) {
     }
 
     LOG_INFO("exiting");
+    if (crashGuard_) crashGuard_->disarm();
     saveSettingsIfChanged(true);
     saveSessionNow();
     if (screenshot_.valid()) LOG_INFO("%s", screenshot_.get().c_str());  // waits for the PNG
@@ -187,6 +194,11 @@ int App::run(const AppOptions& opts) {
 void App::loadShader(const Shader& shader, const LoadRequest& req) {
     pending_ = std::make_unique<ShaderRenderer>(renderContext_);
     pendingRequest_ = req;
+    pendingSerial_ = ++loadSerial_;
+    if (crashGuard_) {
+        crashGuard_->arm({req.libraryId, shader.info.name});
+        armedSerial_ = pendingSerial_;
+    }
     pendingStart_ = std::chrono::steady_clock::now();
     pending_->load(shader);
     LOG_INFO("compiling '%s'%s", shader.info.name.c_str(), caps_.parallelCompile ? " (background)" : "");
@@ -196,6 +208,8 @@ void App::failPending(std::string log) {
     const std::string name = pending_->shader().info.name;
     const LoadRequest req = pendingRequest_;
     pending_.reset();
+    // It failed cleanly; the marker stays only if it belongs to the running shader.
+    if (crashGuard_ && armedSerial_ == pendingSerial_) crashGuard_->disarm();
     LOG_WARN("'%s' failed:\n%s", name.c_str(), log.c_str());
     // Several failures in a row (auto-skip) are all kept in the log window.
     const std::string entry = "=== " + name + " ===\n" + log;
@@ -245,6 +259,11 @@ void App::updateLoading() {
     }
     current_ = std::move(pending_);
     currentLibraryId_ = pendingRequest_.libraryId;
+    currentRequest_ = pendingRequest_;
+    currentSerial_ = pendingSerial_;
+    framesSinceStart_ = 0;
+    slowFrames_ = 0;
+    guardExempt_ = current_->shader().info.name == makeTestPattern().info.name;
     if (!pendingRequest_.isSkip) errorLog_.clear();
     if (player_.contains(currentLibraryId_)) player_.setCurrent(currentLibraryId_);
     clock_.reset();
@@ -431,7 +450,9 @@ void App::renderFrame(double dt) {
     ensureImageTarget(dw, dh);
 
     if (current_ && imageTarget_.valid() && (!paused_ || redrawOnce_)) {
+        beginFrameMeasure();
         renderShader(*current_, clock_, mouse_, imageTarget_, !paused_, dt);
+        ++framesSinceStart_;
         if (!paused_) mouse_.frameRendered();
         redrawOnce_ = false;
     }
@@ -466,6 +487,8 @@ void App::renderFrame(double dt) {
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
     }
+
+    endFrameMeasure();
 
     // With the UI hidden, ImGui only runs while a toast is up.
     const bool toast = toastVisible();

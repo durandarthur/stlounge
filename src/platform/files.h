@@ -14,6 +14,8 @@ bool readTextFile(const fs::path& path, std::string* out, std::string* error,
 
 // Writes `text` to path.tmp, then renames it over `path`, so a crash or full
 // disk never leaves a half-written file. Creates the parent folder.
-bool writeFileAtomically(const fs::path& path, const std::string& text, std::string* error);
+// durable = also flush it to the disk (fsync), so it survives a system freeze or
+// power loss; slower (a few ms), so only for small files that must not be lost.
+bool writeFileAtomically(const fs::path& path, const std::string& text, std::string* error, bool durable = false);
 
 }  // namespace sp

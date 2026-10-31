@@ -44,6 +44,7 @@ void App::rebuildPlaylist() {
     if (!activePlaylist_.empty() && activePlaylist_ != kFavoritesPlaylist && !playlists_->find(activePlaylist_))
         activePlaylist_.clear();  // it was deleted
     player_.setItems(playlistIds());
+    markCrashedAsFailed();
     if (player_.contains(currentLibraryId_)) player_.setCurrent(currentLibraryId_);
 }
 

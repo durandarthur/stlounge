@@ -10,6 +10,7 @@
 #include <set>
 
 #include "config/settings.h"
+#include "library/crash_guard.h"
 #include "library/library.h"
 #include "library/playlist_player.h"
 #include "library/playlists.h"
@@ -49,6 +50,10 @@ TEST(settings_defaults_and_round_trip) {
     const Settings d;
     CHECK(!d.crossfade);  // owner's choice: off by default
     CHECK(d.fpsCap == 0 && d.renderScale == 1.0f && d.compileTimeCapMs == 0);
+    CHECK_EQ(d.frameTimeGuardMs, 1000);
+    std::vector<std::string> warn;
+    CHECK_EQ(settingsFromJson(json::parse(R"({"frame_time_guard_ms": 50})"), &warn).frameTimeGuardMs, 1000);
+    CHECK_EQ(warn.size(), size_t(1));
 
     Settings s;
     s.fpsCap = 30;
@@ -60,6 +65,7 @@ TEST(settings_defaults_and_round_trip) {
     s.audioSource = "alsa_output.foo.monitor";
     s.textureOverrides["abstract1"] = "/home/me/a.png";
     s.compileTimeCapMs = 2000;
+    s.frameTimeGuardMs = 0;
     std::vector<std::string> w;
     const Settings back = settingsFromJson(json::parse(settingsToJson(s).dump()), &w);
     CHECK(w.empty());
@@ -352,4 +358,69 @@ TEST(png_save_and_load_round_trip) {
     CHECK(!loadImageFile(dir / "bad.png", 4, &img, &err));
     CHECK(!err.empty());
     CHECK(!loadImageFile(dir / "missing.png", 4, &img, &err));
+}
+
+// ------------------------------------------------------------------ crash guard
+
+TEST(crash_guard_reports_a_leftover_once) {
+    const fs::path dir = tempDir("sp_test_crash_guard");
+    const fs::path file = dir / "pending.json";
+    {
+        CrashGuard g(file);
+        CHECK(!g.takeLeftover());
+        g.arm({"XsX3Rr", "Heavy one"});
+        CHECK(g.armed());
+        CHECK(fs::exists(file));
+        // the process "dies" here: no disarm
+    }
+    CrashGuard next(file);
+    const std::optional<PendingShader> left = next.takeLeftover();
+    REQUIRE(left.has_value());
+    CHECK_EQ(left->libraryId, std::string("XsX3Rr"));
+    CHECK_EQ(left->name, std::string("Heavy one"));
+    CHECK(!next.takeLeftover());  // reported once
+
+    next.arm({"", "Pasted"});
+    next.arm({"AbCdEf", "Second"});  // replaces the first
+    next.disarm();
+    CHECK(!next.armed());
+    CHECK(!fs::exists(file));
+    CHECK(!CrashGuard(file).takeLeftover());
+
+    // A damaged marker still means the last run didn't end normally.
+    std::ofstream(file) << "{not json";
+    const auto damaged = CrashGuard(file).takeLeftover();
+    REQUIRE(damaged.has_value());
+    CHECK(damaged->libraryId.empty());
+    CHECK(!fs::exists(file));
+}
+
+TEST(durable_write_round_trip) {
+    const fs::path dir = tempDir("sp_test_durable");
+    std::string err, text;
+    CHECK(writeFileAtomically(dir / "sub" / "a.json", "{\"x\": 1}", &err, true));
+    REQUIRE(readTextFile(dir / "sub" / "a.json", &text, &err));
+    CHECK_EQ(text, std::string("{\"x\": 1}"));
+    CHECK(!fs::exists(dir / "sub" / "a.json.tmp"));
+}
+
+TEST(library_crashed_flag_persists) {
+    const fs::path dir = tempDir("sp_test_library_crashed");
+    ShaderLibrary lib(dir);
+    lib.scan();
+    std::string err;
+    const std::string id = lib.add(json::parse(R"({"info": {"id": "-1", "name": "n"},
+        "renderpass": [{"type": "image", "code": "void mainImage(out vec4 c, in vec2 f) { c = vec4(1); }"}]})"),
+                                   "paste", &err);
+    REQUIRE(!id.empty());
+    CHECK(!lib.find(id)->crashed);
+    CHECK(lib.setCrashed(id, true, &err));
+    CHECK(lib.find(id)->crashed);
+    ShaderLibrary again(dir);
+    again.scan();
+    CHECK(again.find(id)->crashed);
+    CHECK(again.setCrashed(id, false, &err));
+    ShaderLibrary third(dir);
+    third.scan();
+    CHECK(!third.find(id)->crashed);
 }

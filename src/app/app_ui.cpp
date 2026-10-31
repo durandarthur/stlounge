@@ -275,15 +275,24 @@ void App::drawLibraryPanel() {
             }
             std::string label = e.author.empty() ? e.name : e.name + "  -  " + e.author;
             if (e.duration > 0) label += "  [" + std::to_string(static_cast<int>(e.duration)) + " s]";
-            const bool failed = player_.isFailed(e.id);
+            const bool failed = player_.isFailed(e.id) || e.crashed;
             if (!e.loadError.empty()) {
                 ImGui::TextDisabled("%s (unreadable)", label.c_str());
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", e.loadError.c_str());
             } else {
                 if (failed) ImGui::PushStyleColor(ImGuiCol_Text, kErrorColor);
-                if (ImGui::Selectable((label + (failed ? "  (failed, click to retry)" : "")).c_str(),
-                                      e.id == currentLibraryId_)) {
-                    player_.clearFailed();  // a manual pick gives every shader another chance
+                const char* why = e.crashed ? "  (crashed the app, click to retry)"
+                                  : failed  ? "  (failed, click to retry)"
+                                            : "";
+                if (ImGui::Selectable((label + why).c_str(), e.id == currentLibraryId_)) {
+                    // A manual pick gives every shader another chance, except ones
+                    // that crashed the app: only the one clicked is retried.
+                    player_.clearFailed();
+                    if (e.crashed) {
+                        std::string error;
+                        library_->setCrashed(e.id, false, &error);
+                    }
+                    markCrashedAsFailed();
                     LoadRequest req;
                     req.fromPlaylist = player_.contains(e.id);
                     playFromLibrary(e.id, req);
@@ -443,8 +452,7 @@ void App::drawErrors() {
     ImGui::SetNextWindowSize(ImVec2(620, 220), ImGuiCond_FirstUseEver);
     bool open = true;
     if (ImGui::Begin("Shader errors", &open)) {
-        textWrappedColored(kErrorColor, "Compile failed. The previous shader keeps running; playlist shaders that "
-                                        "fail are skipped.");
+        textWrappedColored(kErrorColor, "A shader didn't work. Playlist shaders that fail are skipped.");
         ImGui::InputTextMultiline("##log", &errorLog_, ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
     }
     ImGui::End();

@@ -75,6 +75,7 @@ void ShaderLibrary::scan() {
                     const json& m = j["shaderplayer"];
                     e.source = m.value("source", "");
                     if (m.contains("favorite") && m["favorite"].is_boolean()) e.favorite = m["favorite"].get<bool>();
+                    if (m.contains("crashed") && m["crashed"].is_boolean()) e.crashed = m["crashed"].get<bool>();
                     if (m.contains("duration") && m["duration"].is_number()) {
                         const double d = m["duration"].get<double>();
                         if (d > 0 && d < 1e6) e.duration = d;
@@ -207,6 +208,12 @@ bool ShaderLibrary::setDuration(const std::string& id, double seconds, std::stri
     }
     if (!setMeta(id, "duration", seconds > 0 ? json(seconds) : json(nullptr), error)) return false;
     if (LibraryEntry* e = findMutable(id)) e->duration = seconds;
+    return true;
+}
+
+bool ShaderLibrary::setCrashed(const std::string& id, bool crashed, std::string* error) {
+    if (!setMeta(id, "crashed", crashed ? json(true) : json(nullptr), error)) return false;
+    if (LibraryEntry* e = findMutable(id)) e->crashed = crashed;
     return true;
 }
 

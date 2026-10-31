@@ -18,6 +18,7 @@
 #include "gfx/neutral_textures.h"
 #include "gfx/render_target.h"
 #include "gfx/texture_library.h"
+#include "library/crash_guard.h"
 #include "library/library.h"
 #include "library/playlist_player.h"
 #include "library/playlists.h"
@@ -61,6 +62,14 @@ private:
     void loadShader(const Shader& shader, const LoadRequest& req = {});
     void updateLoading();
     void failPending(std::string log);  // by value: it outlives pending_
+
+    // Crash guard and frame-time guard (app_guard.cpp)
+    void handleCrashLeftover(const PendingShader& p);
+    void markCrashedAsFailed();             // keeps crashed shaders skipped in the playlist
+    void updateCrashGuard();                // disarms once the current shader has run a while
+    void beginFrameMeasure();               // before the current shader renders
+    void endFrameMeasure();                 // waits for the GPU, then checks the time
+    void abandonSlowShader(double ms);
     void ensureImageTarget(int drawableW, int drawableH);
     void renderFrame(double dt);
     void renderShader(ShaderRenderer& r, PlaybackClock& clock, const MouseState& mouse, const RenderTarget& target,
@@ -132,6 +141,7 @@ private:
     std::unique_ptr<ShaderRenderer> current_, pending_;
     std::string currentLibraryId_;
     LoadRequest pendingRequest_;
+    LoadRequest currentRequest_;
     std::chrono::steady_clock::time_point pendingStart_;
     PlaybackClock clock_;
     MouseState mouse_;
@@ -201,6 +211,19 @@ private:
     double statusTime_ = 0;
     std::string toast_;
     double toastTime_ = -1e9;
+
+    // Crash guard: the marker names the shader of load number armedSerial_.
+    std::unique_ptr<CrashGuard> crashGuard_;
+    uint64_t loadSerial_ = 0, pendingSerial_ = 0, currentSerial_ = 0, armedSerial_ = 0;
+    int framesSinceStart_ = 0;  // frames the current shader has rendered
+
+    // Frame-time guard: the GPU time of a frame is measured only after a slow frame,
+    // so normal frames don't wait for the GPU.
+    bool measureNextFrame_ = false;
+    bool measuring_ = false;
+    std::chrono::steady_clock::time_point guardStart_;
+    int slowFrames_ = 0;
+    bool guardExempt_ = false;  // the test pattern is never skipped
 
     // Frame timing
     double nextFrameAt_ = 0;  // frame cap deadline (seconds)
