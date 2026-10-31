@@ -52,11 +52,13 @@ public:
     ~Blitter();
     bool init(std::string* error);
     void draw(GLuint texture, int dstWidth, int dstHeight, const FullscreenTriangle& tri) const;
+    // Crossfade: from `a` (t = 0) to `b` (t = 1).
+    void drawMix(GLuint a, GLuint b, float t, int dstWidth, int dstHeight, const FullscreenTriangle& tri) const;
 
 private:
-    GLuint program_ = 0;
-    GLint texLoc_ = -1;
-    GLint sizeLoc_ = -1;
+    GLuint program_ = 0, mixProgram_ = 0;
+    GLint texLoc_ = -1, sizeLoc_ = -1;
+    GLint mixTexLoc_[2] = {-1, -1}, mixSizeLoc_ = -1, mixLoc_ = -1;
 };
 
 }  // namespace sp

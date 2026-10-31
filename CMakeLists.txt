@@ -92,6 +92,8 @@ target_link_libraries(sp_gfx PUBLIC sp_core PkgConfig::GLESV2 PkgConfig::EGL)
 add_library(sp_app STATIC
   src/app/app.cpp
   src/app/app_library.cpp
+  src/app/app_playlist.cpp
+  src/app/app_settings.cpp
   src/app/app_ui.cpp
   src/app/demos.cpp
   src/app/hotkeys.cpp

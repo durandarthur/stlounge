@@ -87,6 +87,7 @@ void FullscreenTriangle::draw() const {
 
 Blitter::~Blitter() {
     if (program_) glDeleteProgram(program_);
+    if (mixProgram_) glDeleteProgram(mixProgram_);
 }
 
 bool Blitter::init(std::string* error) {
@@ -106,7 +107,50 @@ void main() { outColor = vec4(texture(uTex, gl_FragCoord.xy / uSize).rgb, 1.0); 
     program_ = b.takeProgram();
     texLoc_ = glGetUniformLocation(program_, "uTex");
     sizeLoc_ = glGetUniformLocation(program_, "uSize");
+
+    static const char* mixFs = R"(#version 300 es
+precision highp float;
+uniform sampler2D uTexA;
+uniform sampler2D uTexB;
+uniform vec2 uSize;
+uniform float uMix;
+out vec4 outColor;
+void main() {
+    vec2 uv = gl_FragCoord.xy / uSize;
+    outColor = vec4(mix(texture(uTexA, uv).rgb, texture(uTexB, uv).rgb, uMix), 1.0);
+}
+)";
+    ProgramBuild m;
+    m.start(kFullscreenVertexShader, mixFs, false);
+    if (m.status() != ProgramBuild::Status::Ready) {
+        if (error) *error = "crossfade shader failed: " + m.log();
+        return false;
+    }
+    mixProgram_ = m.takeProgram();
+    mixTexLoc_[0] = glGetUniformLocation(mixProgram_, "uTexA");
+    mixTexLoc_[1] = glGetUniformLocation(mixProgram_, "uTexB");
+    mixSizeLoc_ = glGetUniformLocation(mixProgram_, "uSize");
+    mixLoc_ = glGetUniformLocation(mixProgram_, "uMix");
     return true;
+}
+
+void Blitter::drawMix(GLuint a, GLuint b, float t, int dstWidth, int dstHeight, const FullscreenTriangle& tri) const {
+    glUseProgram(mixProgram_);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, b);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, a);
+    glUniform1i(mixTexLoc_[0], 0);
+    glUniform1i(mixTexLoc_[1], 1);
+    glUniform2f(mixSizeLoc_, static_cast<float>(dstWidth), static_cast<float>(dstHeight));
+    glUniform1f(mixLoc_, t);
+    glViewport(0, 0, dstWidth, dstHeight);
+    tri.draw();
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
 }
 
 void Blitter::draw(GLuint texture, int dstWidth, int dstHeight, const FullscreenTriangle& tri) const {

@@ -22,7 +22,8 @@ add_executable(sp_gl_tests
   test_gl_caps.cpp
   test_renderer.cpp
   test_multipass.cpp
-  test_volume_and_samples.cpp)
+  test_volume_and_samples.cpp
+  test_overrides_gl.cpp)
 target_include_directories(sp_gl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(sp_gl_tests PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_gl_tests PRIVATE sp_gfx PkgConfig::EGL)

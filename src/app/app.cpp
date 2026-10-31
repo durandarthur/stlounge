@@ -88,8 +88,33 @@ bool App::startup(const AppOptions& opts) {
     library_ = std::make_unique<ShaderLibrary>(paths_.dataDir / "shaders");
     library_->scan();
     LOG_INFO("library: %zu shaders in %s", library_->entries().size(), library_->dir().c_str());
+    playlists_ = std::make_unique<PlaylistStore>(paths_.dataDir / "playlists");
+    playlists_->scan();
+    LOG_INFO("playlists: %zu in %s", playlists_->playlists().size(), playlists_->dir().c_str());
 
-    loadShader(makeTestPattern());
+    loadSettingsAtStartup();
+
+    const Session session = loadSession(sessionPath_);
+    lastSavedSessionShader_ = session.lastShader;
+    lastSavedSessionPlaylist_ = session.playlist;
+    if (session.playlist.empty() || session.playlist == kFavoritesPlaylist || playlists_->find(session.playlist))
+        activePlaylist_ = session.playlist;
+    player_.setShuffle(settings_.shuffle);
+    rebuildPlaylist();
+
+    if (opts.safeMode) {
+        LOG_INFO("safe mode: not loading the last shader");
+        loadShader(makeTestPattern());
+    } else if (!session.lastShader.empty() && library_->find(session.lastShader)) {
+        LOG_INFO("resuming '%s'", session.lastShader.c_str());
+        LoadRequest req;
+        req.fromPlaylist = player_.contains(session.lastShader);
+        playFromLibrary(session.lastShader, req);
+    } else if (player_.playableCount() > 0) {
+        playlistStep(+1);
+    } else {
+        loadShader(makeTestPattern());
+    }
     return true;
 }
 
@@ -114,11 +139,20 @@ int App::run(const AppOptions& opts) {
             droppedFiles_.clear();
         }
 
+        if (playlistDirty_) rebuildPlaylist();
+        if (skipRequested_ != 2) {
+            const int direction = skipRequested_;
+            skipRequested_ = 2;
+            playlistStep(direction, /*isSkip=*/true);
+        }
         updateLoading();
+        updateAutoAdvance(dt);
         updateAudio(seconds(frameStart));
         renderFrame(dt);
         window_.swap();
-        limitFrameRate(frameStart);
+        pollScreenshot();
+        saveSettingsIfChanged(false);
+        limitFrameRate();
 
         ++fpsFrames_;
         const uint64_t now = SDL_GetPerformanceCounter();
@@ -132,11 +166,16 @@ int App::run(const AppOptions& opts) {
     }
 
     LOG_INFO("exiting");
+    saveSettingsIfChanged(true);
+    saveSessionNow();
+    if (screenshot_.valid()) LOG_INFO("%s", screenshot_.get().c_str());  // waits for the PNG
     // GL objects must go before the context. Members declared after window_
     // are destroyed before it, but release the big ones explicitly anyway.
     audio_.stop();
     current_.reset();
     pending_.reset();
+    outgoing_.reset();
+    outgoingTarget_.destroy();
     imageTarget_.destroy();
     textures_.clear();
     overlay_.shutdown();
@@ -145,34 +184,74 @@ int App::run(const AppOptions& opts) {
 
 // ---------------------------------------------------------------- shaders
 
-void App::loadShader(const Shader& shader, const std::string& libraryId) {
+void App::loadShader(const Shader& shader, const LoadRequest& req) {
     pending_ = std::make_unique<ShaderRenderer>(renderContext_);
-    pendingLibraryId_ = libraryId;
+    pendingRequest_ = req;
+    pendingStart_ = std::chrono::steady_clock::now();
     pending_->load(shader);
     LOG_INFO("compiling '%s'%s", shader.info.name.c_str(), caps_.parallelCompile ? " (background)" : "");
 }
 
+void App::failPending(std::string log) {
+    const std::string name = pending_->shader().info.name;
+    const LoadRequest req = pendingRequest_;
+    pending_.reset();
+    LOG_WARN("'%s' failed:\n%s", name.c_str(), log.c_str());
+    // Several failures in a row (auto-skip) are all kept in the log window.
+    const std::string entry = "=== " + name + " ===\n" + log;
+    errorLog_ = req.isSkip && !errorLog_.empty() ? errorLog_ + "\n" + entry : entry;
+    if (req.fromPlaylist && !req.libraryId.empty()) {
+        player_.markFailed(req.libraryId);
+        setStatus("Skipped '" + name + "': it failed to compile", true);
+        skipRequested_ = req.direction;
+    } else if (!current_ && name != makeTestPattern().info.name) {
+        loadShader(makeTestPattern());  // keep something on screen
+    }
+}
+
 void App::updateLoading() {
     if (!pending_) return;
-    switch (pending_->update()) {
-        case ShaderRenderer::State::Ready:
-            LOG_INFO("'%s' ready (compile %.0f ms)", pending_->shader().info.name.c_str(), pending_->compileMs());
-            for (const std::string& w : pending_->warnings()) LOG_WARN("%s", w.c_str());
-            current_ = std::move(pending_);
-            currentLibraryId_ = pendingLibraryId_;
-            clock_.reset();
-            mouse_.reset();
-            errorLog_.clear();
-            redrawOnce_ = true;
-            break;
-        case ShaderRenderer::State::Failed:
-            errorLog_ = pending_->errorLog();
-            LOG_WARN("'%s' failed to compile:\n%s", pending_->shader().info.name.c_str(), errorLog_.c_str());
-            pending_.reset();
-            break;
-        default:
-            break;
+    const ShaderRenderer::State st = pending_->update();
+    if (st == ShaderRenderer::State::Compiling && settings_.compileTimeCapMs > 0) {
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                                              pendingStart_).count();
+        if (ms > settings_.compileTimeCapMs) {
+            failPending("Compiling took longer than " + std::to_string(settings_.compileTimeCapMs) +
+                        " ms (Settings > Advanced > compile-time cap), so it was cancelled.");
+            return;
+        }
     }
+    if (st == ShaderRenderer::State::Failed) {
+        failPending(pending_->errorLog());
+        return;
+    }
+    if (st != ShaderRenderer::State::Ready) return;
+
+    LOG_INFO("'%s' ready (compile %.0f ms)", pending_->shader().info.name.c_str(), pending_->compileMs());
+    for (const std::string& w : pending_->warnings()) LOG_WARN("%s", w.c_str());
+
+    // Crossfade only between playlist shaders, and never while locked.
+    const bool fade = settings_.crossfade && !settings_.locked && settings_.crossfadeSeconds > 0 && current_ &&
+                      pendingRequest_.fromPlaylist && imageTarget_.valid();
+    if (fade) {
+        outgoing_ = std::move(current_);
+        outgoingClock_ = clock_;
+        std::swap(outgoingTarget_, imageTarget_);  // the old shader keeps its last frame
+        fadeElapsed_ = 0;
+        fadeDuration_ = settings_.crossfadeSeconds;
+    } else {
+        outgoing_.reset();
+        outgoingTarget_.destroy();
+    }
+    current_ = std::move(pending_);
+    currentLibraryId_ = pendingRequest_.libraryId;
+    if (!pendingRequest_.isSkip) errorLog_.clear();
+    if (player_.contains(currentLibraryId_)) player_.setCurrent(currentLibraryId_);
+    clock_.reset();
+    mouse_.reset();
+    shaderElapsed_ = 0;
+    redrawOnce_ = true;
+    if (!currentLibraryId_.empty()) saveSessionNow();
 }
 
 // ---------------------------------------------------------------- events
@@ -275,11 +354,34 @@ void App::doAction(Action a) {
         case Action::Reload:
             if (current_) {
                 const Shader copy = current_->shader();
-                loadShader(copy, currentLibraryId_);
+                LoadRequest req;
+                req.libraryId = currentLibraryId_;
+                loadShader(copy, req);
             }
             break;
-        default:
-            LOG_INFO("hotkey '%s' is not implemented yet", actionName(a));
+        case Action::Next:
+            playlistStep(+1);
+            break;
+        case Action::Previous:
+            playlistStep(-1);
+            break;
+        case Action::Random:
+            playlistStep(0);
+            break;
+        case Action::ToggleLock:
+            setLocked(!settings_.locked);
+            break;
+        case Action::ToggleShuffle:
+            setShuffle(!settings_.shuffle);
+            break;
+        case Action::OpenSettings:
+            showSettings_ = !showSettings_ || !uiVisible_;
+            if (showSettings_) setUiVisible(true);
+            break;
+        case Action::Screenshot:
+            takeScreenshot();
+            break;
+        case Action::None:
             break;
     }
 }
@@ -287,8 +389,9 @@ void App::doAction(Action a) {
 // ---------------------------------------------------------------- rendering
 
 void App::ensureImageTarget(int drawableW, int drawableH) {
-    const int w = std::max(1, static_cast<int>(std::lround(drawableW * renderScale_)));
-    const int h = std::max(1, static_cast<int>(std::lround(drawableH * renderScale_)));
+    const float scale = settings_.renderScale;
+    const int w = std::max(1, static_cast<int>(std::lround(drawableW * scale)));
+    const int h = std::max(1, static_cast<int>(std::lround(drawableH * scale)));
     if (imageTarget_.valid() && imageTarget_.width() == w && imageTarget_.height() == h) return;
     std::string error;
     // The Image pass writes to an 8-bit canvas, like ShaderToy's.
@@ -296,8 +399,27 @@ void App::ensureImageTarget(int drawableW, int drawableH) {
         LOG_ERROR("%s", error.c_str());
         return;
     }
-    LOG_DEBUG("render resolution %dx%d (scale %.2f)", w, h, renderScale_);
+    LOG_DEBUG("render resolution %dx%d (scale %.2f)", w, h, scale);
     redrawOnce_ = true;
+}
+
+void App::renderShader(ShaderRenderer& r, PlaybackClock& clock, const MouseState& mouse, const RenderTarget& target,
+                       bool advance, double dt) {
+    if (advance && clock.frame() > 0) clock.advance(dt);
+    FrameUniforms u;
+    u.time = static_cast<float>(clock.time());
+    u.timeDelta = clock.delta();
+    u.frameRate = clock.frameRate();
+    u.frame = clock.frame();
+    mouse.uniform(u.mouse);
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t tt = std::chrono::system_clock::to_time_t(now);
+    const double frac = std::chrono::duration<double>(now - std::chrono::system_clock::from_time_t(tt)).count();
+    computeDate(tt, frac, u.date);
+    for (float& t : u.channelTime) t = u.time;
+    u.sampleRate = static_cast<float>(AudioCapture::kSampleRate);
+    r.render(u, target);
+    if (advance) clock.frameRendered();
 }
 
 void App::renderFrame(double dt) {
@@ -306,34 +428,37 @@ void App::renderFrame(double dt) {
     ensureImageTarget(dw, dh);
 
     if (current_ && imageTarget_.valid() && (!paused_ || redrawOnce_)) {
-        if (!paused_ && clock_.frame() > 0) clock_.advance(dt);
-
-        FrameUniforms u;
-        u.time = static_cast<float>(clock_.time());
-        u.timeDelta = clock_.delta();
-        u.frameRate = clock_.frameRate();
-        u.frame = clock_.frame();
-        mouse_.uniform(u.mouse);
-        const auto now = std::chrono::system_clock::now();
-        const std::time_t tt = std::chrono::system_clock::to_time_t(now);
-        const double frac =
-            std::chrono::duration<double>(now - std::chrono::system_clock::from_time_t(tt)).count();
-        computeDate(tt, frac, u.date);
-        for (float& t : u.channelTime) t = u.time;
-        u.sampleRate = static_cast<float>(AudioCapture::kSampleRate);
-
-        current_->render(u, imageTarget_);
-        if (!paused_) {
-            clock_.frameRendered();
-            mouse_.frameRendered();
-        }
+        renderShader(*current_, clock_, mouse_, imageTarget_, !paused_, dt);
+        if (!paused_) mouse_.frameRendered();
         redrawOnce_ = false;
+    }
+
+    // The outgoing shader of a crossfade keeps animating (with no mouse input).
+    float fade = 1.0f;
+    if (outgoing_) {
+        if (!paused_) fadeElapsed_ += dt;
+        if (fadeElapsed_ >= fadeDuration_ || !current_) {
+            outgoing_.reset();
+            outgoingTarget_.destroy();
+        } else {
+            if (outgoingTarget_.width() != imageTarget_.width() || outgoingTarget_.height() != imageTarget_.height()) {
+                std::string error;
+                outgoingTarget_.create(imageTarget_.width(), imageTarget_.height(), GL_RGBA8, GL_RGBA,
+                                       GL_UNSIGNED_BYTE, &error);
+            }
+            if (!paused_) renderShader(*outgoing_, outgoingClock_, MouseState{}, outgoingTarget_, true, dt);
+            const float x = static_cast<float>(fadeElapsed_ / fadeDuration_);
+            fade = x * x * (3.0f - 2.0f * x);  // smoothstep
+        }
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, dw, dh);
     if (current_ && imageTarget_.valid()) {
-        blitter_.draw(imageTarget_.texture(), dw, dh, triangle_);
+        if (outgoing_ && outgoingTarget_.valid())
+            blitter_.drawMix(outgoingTarget_.texture(), imageTarget_.texture(), fade, dw, dh, triangle_);
+        else
+            blitter_.draw(imageTarget_.texture(), dw, dh, triangle_);
     } else {
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -366,14 +491,14 @@ void App::updateAudio(double now) {
     audioUnusedSince_ = -1;
 
     if (st == AudioCapture::State::Off) {
-        audio_.start(audioDevice_);
+        audio_.start(settings_.audioSource);
     } else if (st == AudioCapture::State::Failed) {
         // The server may come back (e.g. PipeWire restarted): retry now and then.
         if (audioFailedAt_ < 0) {
             audioFailedAt_ = now;
         } else if (now - audioFailedAt_ > 10.0) {
             audioFailedAt_ = -1;
-            audio_.start(audioDevice_);
+            audio_.start(settings_.audioSource);
         }
     }
 
@@ -392,11 +517,21 @@ void App::updateAudio(double now) {
     }
 }
 
-void App::limitFrameRate(uint64_t frameStart) {
-    if (window_.swapInterval() != 0) return;  // vsync paces us
-    const double target = 1.0 / kFallbackFpsCap;
-    const double spent = seconds(SDL_GetPerformanceCounter() - frameStart);
-    if (spent < target) SDL_Delay(static_cast<Uint32>((target - spent) * 1000.0));
+void App::limitFrameRate() {
+    // The FPS cap applies on top of vsync; without vsync there's always a cap.
+    double cap = settings_.fpsCap;
+    if (cap <= 0 && window_.swapInterval() == 0) cap = kFallbackFpsCap;
+    if (cap <= 0) {
+        nextFrameAt_ = 0;
+        return;
+    }
+    const double period = 1.0 / cap;
+    const double now = seconds(SDL_GetPerformanceCounter());
+    // Deadline-based, so the average rate is right even with millisecond sleeps.
+    if (nextFrameAt_ <= 0 || now - nextFrameAt_ > period) nextFrameAt_ = now;
+    nextFrameAt_ += period;
+    const double wait = nextFrameAt_ - now;
+    if (wait > 0.0005) SDL_Delay(static_cast<Uint32>(wait * 1000.0));
 }
 
 }  // namespace sp

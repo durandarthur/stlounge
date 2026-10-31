@@ -25,16 +25,22 @@ void App::setStatus(const std::string& message, bool error) {
     else LOG_INFO("%s", message.c_str());
 }
 
-void App::playFromLibrary(const std::string& id) {
+void App::playFromLibrary(const std::string& id, const LoadRequest& request) {
+    LoadRequest req = request;
+    req.libraryId = id;
     std::vector<std::string> warnings;
     std::string error;
     std::optional<Shader> s = library_->load(id, &warnings, &error);
     if (!s) {
         setStatus("Can't load " + id + ": " + error, true);
+        if (req.fromPlaylist) {
+            player_.markFailed(id);
+            skipRequested_ = req.direction;  // next frame, so failures can't recurse
+        }
         return;
     }
     for (const std::string& w : warnings) LOG_DEBUG("import note: %s", w.c_str());
-    loadShader(*s, id);
+    loadShader(*s, req);
 }
 
 void App::openPasteDialog(const std::string& clipboard) {
@@ -101,6 +107,7 @@ void App::importText(const std::string& text, const std::string& what, ImportSta
 
 void App::reportImport(const ImportStats& st, const std::string& what) {
     library_->scan();
+    playlistDirty_ = true;
     std::string msg = "Imported " + std::to_string(st.imported) + " shader" + (st.imported == 1 ? "" : "s") +
                       " from " + what;
     if (st.warned) msg += " (" + std::to_string(st.warned) + " with warnings, see the log)";

@@ -33,6 +33,8 @@ bool containsNoCase(const std::string& hay, const std::string& needle) {
 void App::drawUi() {
     drawInfoPanel();
     if (showLibrary_) drawLibraryPanel();
+    if (showSettings_) drawSettingsPanel();
+    drawPlaylistDialogs();
     drawPasteDialog();
     const std::vector<fs::path> chosen = fileBrowser_.draw();
     if (!chosen.empty()) {
@@ -75,9 +77,9 @@ void App::drawInfoPanel() {
         float m[4];
         mouse_.uniform(m);
         ImGui::Text("iMouse (%.0f, %.0f, %.0f, %.0f)", m[0], m[1], m[2], m[3]);
-        ImGui::Text("iResolution %d x %d", imageTarget_.width(), imageTarget_.height());
-        if (ImGui::SliderFloat("Render scale", &renderScale_, 0.25f, 2.0f, "%.2f"))
-            renderScale_ = std::round(renderScale_ * 20.0f) / 20.0f;
+        ImGui::Text("iResolution %d x %d (render scale %.2f)", imageTarget_.width(), imageTarget_.height(),
+                    settings_.renderScale);
+        if (outgoing_) ImGui::TextDisabled("Crossfading (%.1f s left)", std::max(0.0, fadeDuration_ - fadeElapsed_));
 
         ImGui::Separator();
         int ww = 0, wh = 0, dw = 0, dh = 0;
@@ -93,9 +95,12 @@ void App::drawInfoPanel() {
                         caps_.bufferLinearFilter ? "" : " (nearest only)");
             ImGui::Text("Parallel shader compile: %s", caps_.parallelCompile ? "yes" : "no");
         }
-        drawAudioSection();
-        ImGui::Checkbox("Show library", &showLibrary_);
-        ImGui::TextDisabled("Ctrl+V add  Space pause  F5 reload  H/Tab hide UI  F/F11 fullscreen");
+        drawAudioStatus();
+        ImGui::Checkbox("Library", &showLibrary_);
+        ImGui::SameLine();
+        ImGui::Checkbox("Settings (O)", &showSettings_);
+        ImGui::TextDisabled("N/P next/prev  R random  S shuffle  L lock  Space pause  F5 reload");
+        ImGui::TextDisabled("Ctrl+V add  H/Tab hide UI  F/F11 fullscreen  F12 screenshot");
     }
     ImGui::End();
 }
@@ -120,7 +125,11 @@ void App::drawLibraryPanel() {
         fileBrowser_.open(fs::is_directory(downloads, ec) ? downloads : home);
     }
     ImGui::SameLine();
-    if (ImGui::SmallButton("Rescan")) library_->scan();
+    if (ImGui::SmallButton("Rescan")) {
+        library_->scan();
+        playlists_->scan();
+        playlistDirty_ = true;
+    }
     ImGui::SameLine();
     if (ImGui::Checkbox("Select", &selectMode_)) selected_.clear();
     if (selectMode_) {
@@ -138,6 +147,30 @@ void App::drawLibraryPanel() {
         ImGui::EndDisabled();
     }
 
+    if (selectMode_ && !playlists_->playlists().empty()) {
+        ImGui::SameLine();
+        ImGui::BeginDisabled(selected_.empty());
+        if (ImGui::SmallButton("Add to...")) ImGui::OpenPopup("##addsel");
+        ImGui::EndDisabled();
+        if (ImGui::BeginPopup("##addsel")) {
+            for (const Playlist& p : playlists_->playlists()) {
+                if (!ImGui::MenuItem(p.name.c_str())) continue;
+                std::string error;
+                int failed = 0;
+                for (const std::string& id : selected_)
+                    if (!playlists_->addShader(p.name, id, &error)) ++failed;
+                if (failed) setStatus("Couldn't add " + std::to_string(failed) + ": " + error, true);
+                else setStatus("Added " + std::to_string(selected_.size()) + " shaders to '" + p.name + "'");
+                playlistDirty_ = true;
+            }
+            ImGui::EndPopup();
+        }
+    }
+
+    ImGui::Separator();
+    drawPlaylistControls();
+    ImGui::Separator();
+
     if (!status_.empty()) {
         const double age = static_cast<double>(SDL_GetTicks()) / 1000.0 - statusTime_;
         if (age < 15.0) ImGui::TextColored(statusIsError_ ? kErrorColor : kWarnColor, "%s", status_.c_str());
@@ -146,13 +179,30 @@ void App::drawLibraryPanel() {
     ImGui::SetNextItemWidth(-1);
     ImGui::InputTextWithHint("##filter", "Filter by name or author", &libraryFilter_);
 
-    const auto& entries = library_->entries();
+    // Rows: the active playlist (all shaders also lists unreadable files).
+    const bool userList = !activePlaylist_.empty() && activePlaylist_ != kFavoritesPlaylist;
+    std::vector<const LibraryEntry*> rows;
+    if (userList) {
+        if (const Playlist* p = playlists_->find(activePlaylist_))
+            for (const std::string& id : p->ids)
+                if (const LibraryEntry* e = library_->find(id)) rows.push_back(e);
+    } else {
+        for (const LibraryEntry& e : library_->entries())
+            if (activePlaylist_.empty() || e.favorite) rows.push_back(&e);
+    }
+    const bool filtering = !libraryFilter_.empty();
+
     if (ImGui::BeginChild("##entries", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() * 2.2f), ImGuiChildFlags_Borders)) {
-        if (entries.empty())
+        if (library_->entries().empty())
             ImGui::TextWrapped("No shaders yet. Press Ctrl+V to paste one (code or ShaderToy JSON), or import a "
                                "JSON file. Shaders are saved in %s",
                                library_->dir().c_str());
-        for (const LibraryEntry& e : entries) {
+        else if (rows.empty())
+            ImGui::TextWrapped(activePlaylist_ == kFavoritesPlaylist
+                                   ? "No favorites yet. Click the * next to a shader in 'All shaders'."
+                                   : "This playlist is empty. Right-click shaders in 'All shaders' to add them.");
+        for (size_t i = 0; i < rows.size(); ++i) {
+            const LibraryEntry& e = *rows[i];
             if (!containsNoCase(e.name, libraryFilter_) && !containsNoCase(e.author, libraryFilter_)) continue;
             ImGui::PushID(e.id.c_str());
             if (selectMode_) {
@@ -163,23 +213,89 @@ void App::drawLibraryPanel() {
                 }
                 ImGui::SameLine();
             }
-            const std::string label = e.author.empty() ? e.name : e.name + "  -  " + e.author;
+            if (e.loadError.empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, e.favorite ? ImVec4(1.0f, 0.8f, 0.2f, 1.0f)
+                                                                : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                if (ImGui::SmallButton("*")) {
+                    std::string error;
+                    if (!library_->setFavorite(e.id, !e.favorite, &error)) setStatus(error, true);
+                    playlistDirty_ = true;
+                }
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip(e.favorite ? "Remove from favorites" : "Add to favorites");
+                ImGui::SameLine();
+            }
+            std::string label = e.author.empty() ? e.name : e.name + "  -  " + e.author;
+            if (e.duration > 0) label += "  [" + std::to_string(static_cast<int>(e.duration)) + " s]";
+            const bool failed = player_.isFailed(e.id);
             if (!e.loadError.empty()) {
                 ImGui::TextDisabled("%s (unreadable)", label.c_str());
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", e.loadError.c_str());
-            } else if (ImGui::Selectable(label.c_str(), e.id == currentLibraryId_)) {
-                playFromLibrary(e.id);
+            } else {
+                if (failed) ImGui::PushStyleColor(ImGuiCol_Text, kErrorColor);
+                if (ImGui::Selectable((label + (failed ? "  (failed, click to retry)" : "")).c_str(),
+                                      e.id == currentLibraryId_)) {
+                    player_.clearFailed();  // a manual pick gives every shader another chance
+                    LoadRequest req;
+                    req.fromPlaylist = player_.contains(e.id);
+                    playFromLibrary(e.id, req);
+                }
+                if (failed) ImGui::PopStyleColor();
             }
             if (ImGui::BeginPopupContextItem("##ctx")) {
+                if (e.loadError.empty()) {
+                    if (ImGui::MenuItem(e.favorite ? "Remove from favorites" : "Add to favorites")) {
+                        std::string error;
+                        if (!library_->setFavorite(e.id, !e.favorite, &error)) setStatus(error, true);
+                        playlistDirty_ = true;
+                    }
+                    if (ImGui::BeginMenu("Add to playlist")) {
+                        for (const Playlist& p : playlists_->playlists()) {
+                            const bool has = std::find(p.ids.begin(), p.ids.end(), e.id) != p.ids.end();
+                            if (ImGui::MenuItem(p.name.c_str(), nullptr, has, !has)) {
+                                std::string error;
+                                if (!playlists_->addShader(p.name, e.id, &error)) setStatus(error, true);
+                                playlistDirty_ = true;
+                            }
+                        }
+                        if (ImGui::MenuItem("New playlist...")) {
+                            nameDialog_ = NameDialog::New;
+                            nameDialogText_.clear();
+                            nameDialogError_.clear();
+                            nameDialogAddId_ = e.id;
+                        }
+                        ImGui::EndMenu();
+                    }
+                    if (userList) {
+                        std::string error;
+                        if (!filtering && ImGui::MenuItem("Move up", nullptr, false, i > 0)) {
+                            playlists_->move(activePlaylist_, i, -1, &error);
+                            playlistDirty_ = true;
+                        }
+                        if (!filtering && ImGui::MenuItem("Move down", nullptr, false, i + 1 < rows.size())) {
+                            playlists_->move(activePlaylist_, i, +1, &error);
+                            playlistDirty_ = true;
+                        }
+                        if (ImGui::MenuItem(("Remove from '" + activePlaylist_ + "'").c_str())) {
+                            playlists_->removeShader(activePlaylist_, e.id, &error);
+                            playlistDirty_ = true;
+                        }
+                        if (!error.empty()) setStatus(error, true);
+                    }
+                    if (ImGui::MenuItem("Play time...")) {
+                        durationEditId_ = e.id;
+                        durationEditValue_ = static_cast<int>(e.duration);
+                    }
+                }
                 if (!e.url.empty() && ImGui::MenuItem("Copy link")) SDL_SetClipboardText(e.url.c_str());
-                if (ImGui::MenuItem("Delete...")) deleteCandidates_ = {e.id};
+                if (ImGui::MenuItem("Delete from library...")) deleteCandidates_ = {e.id};
                 ImGui::EndPopup();
             }
             ImGui::PopID();
         }
     }
     ImGui::EndChild();
-    ImGui::TextDisabled("%zu shaders. Right-click an entry for more.", entries.size());
+    ImGui::TextDisabled("%zu shaders in the library. Right-click an entry for more.", library_->entries().size());
     if (ImGui::SmallButton("Test pattern")) loadShader(makeTestPattern());
     ImGui::SameLine();
     if (ImGui::SmallButton("Multipass demo")) loadShader(makeMultipassDemo());
@@ -200,10 +316,12 @@ void App::drawLibraryPanel() {
             std::string error;
             for (const std::string& id : deleteCandidates_) {
                 if (!library_->remove(id, &error, /*rescan=*/false)) ++failed;
+                else playlists_->forgetShader(id);
                 if (id == currentLibraryId_) currentLibraryId_.clear();
                 selected_.erase(id);
             }
             library_->scan();
+            playlistDirty_ = true;
             if (failed) setStatus("Delete failed for " + std::to_string(failed) + ": " + error, true);
             else if (deleteCandidates_.size() > 1)
                 setStatus("Deleted " + std::to_string(deleteCandidates_.size()) + " shaders");
@@ -239,6 +357,7 @@ void App::drawPasteDialog() {
             pasteDialog_.close();
             const LibraryEntry* e = library_->find(id);
             setStatus("Added '" + (e ? e->name : id) + "' to the library");
+            playlistDirty_ = true;
             playFromLibrary(id);
             break;
         }
@@ -247,7 +366,7 @@ void App::drawPasteDialog() {
     }
 }
 
-void App::drawAudioSection() {
+void App::drawAudioStatus() {
     if (!ImGui::CollapsingHeader("Audio")) return;
     switch (audio_.state()) {
         case AudioCapture::State::Off:
@@ -264,30 +383,7 @@ void App::drawAudioSection() {
             ImGui::TextDisabled("Audio inputs stay silent. Retrying every 10 s.");
             break;
     }
-
-    if (!audioSourcesListed_) {
-        audioSources_ = AudioCapture::listSources(&audioListError_);
-        audioSourcesListed_ = true;
-    }
-    std::string current = "Default output (follows changes)";
-    for (const AudioSource& src : audioSources_)
-        if (src.name == audioDevice_) current = src.description;
-    if (ImGui::BeginCombo("Source", current.c_str())) {
-        if (ImGui::Selectable("Default output (follows changes)", audioDevice_.empty())) audioDevice_.clear();
-        for (const AudioSource& src : audioSources_) {
-            const std::string label = (src.isMonitor ? "Output: " : "Input: ") + src.description;
-            if (ImGui::Selectable(label.c_str(), src.name == audioDevice_)) audioDevice_ = src.name;
-        }
-        ImGui::EndCombo();
-        if (audioDevice_ != audio_.requestedDevice() && audio_.state() != AudioCapture::State::Off) {
-            audio_.start(audioDevice_);
-            audioFailedAt_ = -1;
-        }
-    }
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Refresh")) audioSourcesListed_ = false;
-    if (!audioListError_.empty()) ImGui::TextDisabled("%s", audioListError_.c_str());
-
+    drawAudioSourcePicker();
     float bins[SpectrumAnalyser::kBins];
     for (int i = 0; i < SpectrumAnalyser::kBins; ++i) bins[i] = audioFrequency_[i];
     ImGui::PlotHistogram("##fft", bins, SpectrumAnalyser::kBins, 0, "FFT (texture row 0)", 0.0f, 255.0f,
@@ -299,7 +395,8 @@ void App::drawErrors() {
     ImGui::SetNextWindowSize(ImVec2(620, 220), ImGuiCond_FirstUseEver);
     bool open = true;
     if (ImGui::Begin("Shader errors", &open)) {
-        ImGui::TextColored(kErrorColor, "Compile failed. The previous shader keeps running.");
+        ImGui::TextColored(kErrorColor, "Compile failed. The previous shader keeps running; playlist shaders that "
+                                        "fail are skipped.");
         ImGui::InputTextMultiline("##log", &errorLog_, ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
     }
     ImGui::End();
