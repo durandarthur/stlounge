@@ -157,7 +157,9 @@ ImageData makeRgbaNoise(int size, uint32_t seed) {
     for (int y = 0; y < size; ++y)
         for (int x = 0; x < size; ++x) {
             const size_t dst = (static_cast<size_t>(y) * size + x) * 4;
-            const size_t src = (static_cast<size_t>((y + 17) % size) * size + (x + 37) % size) * 4;
+            // R(x, y) = G(x + 37, y + 17): G here is R from (37, 17) pixels back.
+            const size_t src =
+                (static_cast<size_t>((y - 17 % size + size) % size) * size + (x - 37 % size + size) % size) * 4;
             img.pixels[dst + 1] = img.pixels[src + 0];
             img.pixels[dst + 3] = img.pixels[src + 2];
         }

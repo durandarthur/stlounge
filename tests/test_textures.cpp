@@ -49,8 +49,8 @@ TEST(rgba_noise_has_shadertoy_offset_structure) {
         for (int y = 0; y < size; ++y)
             for (int x = 0; x < size; ++x) {
                 const int sx = (x + 37) % size, sy = (y + 17) % size;
-                if (img.at(x, y, 1) != img.at(sx, sy, 0)) ++mismatches;
-                if (img.at(x, y, 3) != img.at(sx, sy, 2)) ++mismatches;
+                if (img.at(x, y, 0) != img.at(sx, sy, 1)) ++mismatches;
+                if (img.at(x, y, 2) != img.at(sx, sy, 3)) ++mismatches;
             }
         CHECK_EQ(mismatches, 0);
         // R and B are independent, uniform noise.
@@ -63,14 +63,14 @@ TEST(rgba_noise_has_shadertoy_offset_structure) {
 }
 
 TEST(rgba_noise_offset_after_vflip) {
-    // With vflip (ShaderToy's default) the relation becomes G(x,y) = R(x+37, y-17).
+    // With vflip the relation becomes R(x,y) = G(x+37, y-17).
     const int size = 256;
     ImageData img = makeRgbaNoise(size, 99);
     flipRows(img);
     int mismatches = 0;
     for (int y = 0; y < size; ++y)
         for (int x = 0; x < size; ++x)
-            if (img.at(x, y, 1) != img.at((x + 37) % size, (y - 17 + size) % size, 0)) ++mismatches;
+            if (img.at(x, y, 0) != img.at((x + 37) % size, (y - 17 + size) % size, 1)) ++mismatches;
     CHECK_EQ(mismatches, 0);
 }
 
@@ -317,4 +317,26 @@ TEST(artistic_textures_have_usable_brightness_and_contrast) {
         CHECK(mean >= minMean && mean <= 0.75);
         CHECK(sd >= 0.08);
     }
+}
+
+// iq's 3D value noise from a 2D texture (as in Warp Tunnel, Clouds...) must be
+// continuous across whole-number z, which is what the channel structure is for.
+TEST(rgba_noise_makes_continuous_3d_noise) {
+    const ImageData img = makeRgbaNoise(256, 4321);
+    auto tex = [&](int x, int y, int c) { return img.at(((x % 256) + 256) % 256, ((y % 256) + 256) % 256, c) / 255.0; };
+    // Nearest lookup at integer lattice points (f.xy = 0), like textureLod at texel centres.
+    auto noise = [&](double px, double py, double pz) {
+        const double fz = pz - std::floor(pz);
+        const int z = static_cast<int>(std::floor(pz));
+        const int ux = static_cast<int>(px) + 37 * z, uy = static_cast<int>(py) + 17 * z;
+        const double g = tex(ux, uy, 1), r = tex(ux, uy, 0);  // .yx
+        return g + (r - g) * fz;
+    };
+    double worst = 0;
+    for (int i = 0; i < 200; ++i)
+        for (int z = 1; z < 5; ++z) {
+            const double below = noise(i, 3 * i, z - 1e-9), above = noise(i, 3 * i, z + 1e-9);
+            worst = std::max(worst, std::fabs(below - above));
+        }
+    CHECK(worst < 1e-6);
 }

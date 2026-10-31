@@ -20,9 +20,9 @@ struct ImageData {
     }
 };
 
-// White noise with ShaderToy's channel structure: G is R shifted by (37,17)
-// pixels and A is B shifted by (37,17), i.e. G(x,y) = R(x+37, y+17) with
-// wrap-around. Shaders doing 3D value noise from a 2D texture rely on this.
+// White noise with ShaderToy's channel structure: R(x,y) = G(x+37, y+17) and
+// B(x,y) = A(x+37, y+17), with wrap-around (rows as stored, vflip off). iq-style
+// 3D value noise reads .yx at uv + (37,17)*z, so layer z+1's G continues layer z's R.
 ImageData makeRgbaNoise(int size, uint32_t seed);
 
 // Single-channel uniform white noise.

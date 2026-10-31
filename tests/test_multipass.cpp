@@ -175,14 +175,14 @@ TEST(multipass_buffer_mipmaps) {
 TEST(channel_rgba_noise_offset_on_gpu) {
     Fixture f(64, 64);
     Shader s;
-    // For each pixel: |G(x,y) - R(x+37, y+17)| (vflip off) — must be 0 everywhere.
+    // For each pixel: |R(x,y) - G(x+37, y+17)| (vflip off) — must be 0 everywhere.
     Pass img = image(
         "void mainImage(out vec4 c, in vec2 p) {\n"
         "  ivec2 q = ivec2(p);\n"
-        "  float g = texelFetch(iChannel0, q, 0).g;\n"
-        "  float r = texelFetch(iChannel0, (q + ivec2(37, 17)) & 255, 0).r;\n"
-        "  float gf = texelFetch(iChannel1, q, 0).g;\n"
-        "  float rf = texelFetch(iChannel1, (q + ivec2(37, 256 - 17)) & 255, 0).r;\n"
+        "  float r = texelFetch(iChannel0, q, 0).r;\n"
+        "  float g = texelFetch(iChannel0, (q + ivec2(37, 17)) & 255, 0).g;\n"
+        "  float rf = texelFetch(iChannel1, q, 0).r;\n"
+        "  float gf = texelFetch(iChannel1, (q + ivec2(37, 256 - 17)) & 255, 0).g;\n"
         "  c = vec4(abs(g - r), abs(gf - rf), iChannelResolution[0].x + 1000.0 * iChannelResolution[2].z, 1.0);\n"
         "}\n");
     img.inputs[0].type = InputType::Texture;
