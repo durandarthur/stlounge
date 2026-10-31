@@ -344,6 +344,7 @@ void App::doAction(Action a) {
         case Action::TogglePause:
             paused_ = !paused_;
             LOG_INFO("%s", paused_ ? "paused" : "resumed");
+            showToast(paused_ ? "Paused" : "Resumed");
             break;
         case Action::Paste: {
             char* text = SDL_GetClipboardText();
@@ -370,9 +371,11 @@ void App::doAction(Action a) {
             break;
         case Action::ToggleLock:
             setLocked(!settings_.locked);
+            showToast(settings_.locked ? "Locked" : "Unlocked");
             break;
         case Action::ToggleShuffle:
             setShuffle(!settings_.shuffle);
+            showToast(settings_.shuffle ? "Shuffle on" : "Shuffle off");
             break;
         case Action::OpenSettings:
             showSettings_ = !showSettings_ || !uiVisible_;
@@ -464,9 +467,12 @@ void App::renderFrame(double dt) {
         glClear(GL_COLOR_BUFFER_BIT);
     }
 
-    if (uiVisible_) {
+    // With the UI hidden, ImGui only runs while a toast is up.
+    const bool toast = toastVisible();
+    if (uiVisible_ || toast) {
         overlay_.beginFrame();
-        drawUi();
+        if (uiVisible_) drawUi();
+        if (toast) drawToast();
         overlay_.endFrame();
     }
 }

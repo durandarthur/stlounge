@@ -45,6 +45,35 @@ void App::drawUi() {
     if (!errorLog_.empty()) drawErrors();
 }
 
+namespace {
+constexpr double kToastSeconds = 1.5;
+constexpr double kToastFade = 0.4;
+double toastNow() { return static_cast<double>(SDL_GetTicks()) / 1000.0; }
+}  // namespace
+
+void App::showToast(std::string text) {
+    toast_ = std::move(text);
+    toastTime_ = toastNow();
+}
+
+bool App::toastVisible() const { return !toast_.empty() && toastNow() - toastTime_ < kToastSeconds; }
+
+void App::drawToast() {
+    const double left = kToastSeconds - (toastNow() - toastTime_);
+    const float alpha = static_cast<float>(std::clamp(left / kToastFade, 0.0, 1.0));
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + 24.0f), ImGuiCond_Always,
+                            ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.6f * alpha);
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##toast", nullptr, flags)) ImGui::TextUnformatted(toast_.c_str());
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
 void App::drawCurrentShaderInfo() {
     if (!current_) {
         ImGui::TextDisabled("No shader running");

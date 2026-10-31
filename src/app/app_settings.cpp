@@ -292,8 +292,9 @@ void App::takeScreenshot() {
 void App::pollScreenshot() {
     if (!screenshot_.valid() || screenshot_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
     const std::string msg = screenshot_.get();
-    if (!msg.empty() && msg[0] == '!') setStatus(msg.substr(1), true);
-    else setStatus(msg);
+    const bool failed = !msg.empty() && msg[0] == '!';
+    setStatus(failed ? msg.substr(1) : msg, failed);
+    showToast(failed ? "Screenshot failed (see log)" : "Screenshot saved");
 }
 
 }  // namespace sp

@@ -278,3 +278,25 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
     fragColor = vec4(mix(vec3(0.05), vec3(1.0), ink), 1.0);
 }
 ```
+
+### Step 3 result (2026-10-31, shadertoy.com, running)
+
+| Row | Site | App |
+|---|---|---|
+| 1 Image `iFrame` | 1410 | N |
+| 2 Buffer A `iFrame` | 1410 | N |
+| 3 volume `iFrame` seen by Buffer A | 1410 | N |
+| 4 volume draw count seen by Buffer A | 42862.5 | N + 1 |
+| 5 Buffer A draw count | 1411 | N + 1 |
+| 6 voxel (0,0,0) seen by Image | 1410 | N |
+| 7 volume self-read | 1409 | N − 1 |
+| 8 voxel (2,0,0) | 1410 | N |
+| 9 volume draw count | 42862.5 | N + 1 |
+
+Rows 1–3 and 5–8 match the app: the volume is drawn every frame, before the buffers, and a
+volume reading itself gets the previous frame. Rows 4 and 9 show the volume counter kept
+counting from before the rewind (Buffer A's counter was reset, row 5), so the site's rewind
+clears buffers but not the volume. The .5 probably comes from the site copying old contents
+with filtering when it recreated the volume. The app clears everything when a shader starts, so
+it doesn't copy this quirk. The earlier step 1 and 2 results are explained the same way: they
+read leftover volume contents from before the edits.

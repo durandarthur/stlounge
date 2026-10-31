@@ -100,6 +100,10 @@ private:
     void reportImport(const ImportStats& stats, const std::string& what);
     void openPasteDialog(const std::string& clipboard);
     void setStatus(const std::string& message, bool error = false);
+    // A short message at the top of the window, shown even with the UI hidden.
+    void showToast(std::string text);
+    bool toastVisible() const;
+    void drawToast();
 
     // UI (app_ui.cpp)
     void drawUi();
@@ -195,6 +199,8 @@ private:
     std::string status_;
     bool statusIsError_ = false;
     double statusTime_ = 0;
+    std::string toast_;
+    double toastTime_ = -1e9;
 
     // Frame timing
     double nextFrameAt_ = 0;  // frame cap deadline (seconds)
