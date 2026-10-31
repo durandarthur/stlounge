@@ -122,8 +122,15 @@ install(TARGETS ${APP_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY assets/textures DESTINATION ${CMAKE_INSTALL_DATADIR}/${APP_NAME})
 configure_file(packaging/app.desktop.in ${CMAKE_BINARY_DIR}/generated/${APP_NAME}.desktop @ONLY)
 install(FILES ${CMAKE_BINARY_DIR}/generated/${APP_NAME}.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-install(FILES packaging/icon.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+# App icon: assets/icons/icon.svg, rendered to PNGs by packaging/render-icons.sh.
+install(FILES assets/icons/icon.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
         RENAME ${APP_NAME}.svg)
+foreach(size 16 32 48 64 128 256)
+  install(FILES assets/icons/${size}.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
+          RENAME ${APP_NAME}.png)
+endforeach()
+# The window icon, found like the textures (next to the binary or in the source tree).
+install(FILES assets/icons/64.png DESTINATION ${CMAKE_INSTALL_DATADIR}/${APP_NAME}/icons)
 
 if(SP_BUILD_TESTS)
   enable_testing()

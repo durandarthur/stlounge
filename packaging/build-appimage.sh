@@ -112,7 +112,8 @@ DESTDIR="$APPDIR" cmake --install "$OUT/build"
 
 BIN="$APPDIR/usr/bin/$APP_NAME"
 DESKTOP="$APPDIR/usr/share/applications/$APP_NAME.desktop"
-ICON="$APPDIR/usr/share/icons/hicolor/scalable/apps/$APP_NAME.svg"
+# appimagetool needs a PNG (or XPM) icon for .DirIcon; SVG isn't accepted.
+ICON="$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png"
 for f in "$BIN" "$DESKTOP" "$ICON"; do
     [[ -f "$f" ]] || die "the install step didn't create $f (check the install() rules in CMakeLists.txt)"
 done
@@ -157,6 +158,11 @@ BAD="$(find "$APPDIR" \( -type f -o -type l \) -regextype posix-extended \
 if [[ ${#EXTRA[@]} -gt 0 ]]; then
     [[ -n "$(find "$APPDIR/usr/lib" -name 'libSDL3.so*' -print)" ]] || die "SDL3 was not bundled"
 fi
+
+# The AppImage's own icon: <name>.png at the top of the AppDir, from which appimagetool
+# makes .DirIcon. Replace whatever linuxdeploy put there.
+rm -f "$APPDIR/.DirIcon" "$APPDIR/$APP_NAME.svg" "$APPDIR/$APP_NAME.xpm"
+cp "$ICON" "$APPDIR/$APP_NAME.png"
 
 OUTPUT="$OUT/$APP_NAME-$APP_VERSION-x86_64.AppImage"
 RUNTIME=()

@@ -13,6 +13,7 @@
 #include "gfx/gl.h"
 #include "gfx/program.h"
 #include "platform/log.h"
+#include "textures/image_io.h"
 
 namespace sp {
 
@@ -53,6 +54,8 @@ bool App::startup(const AppOptions& opts) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, APP_DISPLAY_NAME, error.c_str(), nullptr);
         return false;
     }
+
+    setWindowIcon();
 
     caps_ = probeGlCaps();
     LOG_INFO("GL: %s", caps_.summary().c_str());
@@ -119,6 +122,24 @@ bool App::startup(const AppOptions& opts) {
         loadShader(makeTestPattern());
     }
     return true;
+}
+
+void App::setWindowIcon() {
+    // On Wayland the compositor may take the icon from the desktop file instead; this
+    // covers X11, taskbars that read the window's own icon, and running from build/.
+    const fs::path assets = findAssetsDir(APP_NAME);
+    if (assets.empty()) return;
+    ImageData icon;
+    std::string error;
+    if (!loadImageFile(assets / "icons" / "64.png", 4, &icon, &error)) {
+        LOG_DEBUG("window icon: %s", error.c_str());
+        return;
+    }
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(icon.pixels.data(), icon.width, icon.height, 32,
+                                                              icon.width * 4, SDL_PIXELFORMAT_RGBA32);
+    if (!surface) return;
+    SDL_SetWindowIcon(window_.sdl(), surface);
+    SDL_FreeSurface(surface);
 }
 
 int App::run(const AppOptions& opts) {

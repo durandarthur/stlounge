@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130b36"/>
+      <stop offset="0.6" stop-color="#3b145a"/>
+      <stop offset="1" stop-color="#5a1a5e"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe682"/>
+      <stop offset="0.5" stop-color="#ff8f5a"/>
+      <stop offset="1" stop-color="#ff3f8e"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff7aa8" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ff7aa8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1650"/>
+      <stop offset="1" stop-color="#0b1a38"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#53f0ff"/>
+      <stop offset="0.5" stop-color="#8f8bff"/>
+      <stop offset="1" stop-color="#ff7ad9"/>
+    </linearGradient>
+    <filter id="blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5"/></filter>
+    <clipPath id="tile"><rect x="8" y="8" width="240" height="240" rx="52"/></clipPath>
+    <clipPath id="sunclip">
+      <rect x="0" y="0" width="256" height="112"/>
+      <rect x="0" y="117" width="256" height="8"/>
+      <rect x="0" y="130" width="256" height="6"/>
+      <rect x="0" y="141" width="256" height="4"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="256" height="256" fill="url(#sky)"/>
+    <circle cx="128" cy="112" r="100" fill="url(#halo)"/>
+    <circle cx="128" cy="112" r="60" fill="url(#sun)" clip-path="url(#sunclip)"/>
+    <!-- sea with glowing wave lines -->
+    <rect x="0" y="150" width="256" height="110" fill="url(#sea)"/>
+    <path d="M-10 160 C 28 148, 66 172, 106 160 S 186 148, 266 162" fill="none" stroke="url(#glow)" stroke-width="6" stroke-linecap="round"/>
+    <path d="M-10 182 C 32 170, 70 194, 112 182 S 192 170, 266 184" fill="none" stroke="url(#glow)" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M-10 202 C 36 192, 74 214, 118 202 S 198 192, 266 204" fill="none" stroke="url(#glow)" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+    <!-- shore -->
+    <path d="M-10 214 C 60 204, 150 208, 266 200 L 266 266 L -10 266 Z" fill="#0a0520"/>
+    <!-- neon sun lounger -->
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <g stroke="#ff5fc8" stroke-width="12" opacity="0.45" filter="url(#blur)">
+        <path d="M84 150 L 112 208 L 196 208"/>
+        <path d="M120 208 L 112 232 M 188 208 L 196 232"/>
+      </g>
+      <g stroke="#ffc2ee" stroke-width="7">
+        <path d="M84 150 L 112 208 L 196 208"/>
+        <path d="M120 208 L 112 232 M 188 208 L 196 232"/>
+      </g>
+    </g>
+  </g>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+</svg>

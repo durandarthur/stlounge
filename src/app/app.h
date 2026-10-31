@@ -95,6 +95,7 @@ private:
     void applyTextureOverride(const std::string& id, const std::string& path);
     void saveSettingsIfChanged(bool force);
     void drawSettingsPanel();
+    void setWindowIcon();
     void rescanTextureFolder();
     void takeScreenshot();
     void pollScreenshot();
