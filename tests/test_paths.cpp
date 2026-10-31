@@ -80,9 +80,9 @@ TEST(paths_ensure_creates_dirs) {
 }
 
 TEST(asset_dir_candidates_order) {
-    const auto c = sp::assetDirCandidates("/opt/app/usr/bin/shaderplayer", "shaderplayer", "/src/assets");
+    const auto c = sp::assetDirCandidates("/opt/app/usr/bin/stlounge", "stlounge", "/src/assets");
     REQUIRE(c.size() == 2u);
-    CHECK_EQ(c[0], fs::path("/opt/app/usr/share/shaderplayer"));
+    CHECK_EQ(c[0], fs::path("/opt/app/usr/share/stlounge"));
     CHECK_EQ(c[1], fs::path("/src/assets"));
     CHECK_EQ(sp::assetDirCandidates("", "x", "").size(), size_t(0));
 }

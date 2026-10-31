@@ -204,7 +204,7 @@ TEST(library_add_load_remove) {
     json stored = json::parse(readText(lib.dir() / "AbCdEf.json"));
     CHECK(stored.contains("somethingNew"));
     CHECK(stored.contains("flags"));
-    CHECK_EQ(stored["shaderplayer"]["source"].get<std::string>(), std::string("import"));
+    CHECK_EQ(stored["stlounge"]["source"].get<std::string>(), std::string("import"));
 
     // A pasted shader gets a local id, and keeps it when saved again.
     Shader pasted;

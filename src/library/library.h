@@ -1,7 +1,7 @@
 #pragma once
 // Shader library: one JSON file per shader in <data>/shaders/<id>.json, in
 // ShaderToy's website format. Imported JSON is kept as-is (lossless); the app
-// adds only a "shaderplayer" object with its own metadata.
+// adds only a "stlounge" object with its own metadata.
 
 #include <nlohmann/json_fwd.hpp>
 
@@ -58,7 +58,7 @@ public:
     // can't show, like Sound). Clears the crashed flag, since the code changed.
     bool update(const std::string& id, const Shader& edited, std::string* error);
 
-    // Per-shader settings, stored in the file's "shaderplayer" object. They
+    // Per-shader settings, stored in the file's "stlounge" object. They
     // update the in-memory entry too, so no rescan is needed.
     bool setFavorite(const std::string& id, bool favorite, std::string* error);
     bool setDuration(const std::string& id, double seconds, std::string* error);
@@ -70,7 +70,7 @@ public:
     static bool isSafeId(const std::string& id);
 
 private:
-    // Rewrites one field of the "shaderplayer" object (null removes it).
+    // Rewrites one field of the "stlounge" object (null removes it).
     bool setMeta(const std::string& id, const char* key, const nlohmann::json& value, std::string* error);
     LibraryEntry* findMutable(const std::string& id);
 

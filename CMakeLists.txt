@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.16)
 # App identity. To rename the app, change these three lines only.
 # APP_NAME is used for the binary, XDG folders, log file and window class.
 # ---------------------------------------------------------------------------
-set(APP_NAME         "shaderplayer")
-set(APP_DISPLAY_NAME "ShaderPlayer")
+set(APP_NAME         "stlounge")
+set(APP_DISPLAY_NAME "stlounge")
 set(APP_VERSION      "0.1.0")
 
 project(${APP_NAME} VERSION ${APP_VERSION} LANGUAGES C CXX)

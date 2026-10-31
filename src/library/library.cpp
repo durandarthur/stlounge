@@ -18,6 +18,28 @@ using json = nlohmann::json;
 
 namespace {
 
+// The app's own data inside a shader file. Fixed, not APP_NAME, so renaming the app
+// never orphans it. Files written before the app had its name use the legacy key.
+constexpr const char* kMetaKey = "stlounge";
+constexpr const char* kLegacyMetaKey = "shaderplayer";
+
+// The metadata object of a parsed file, or nullptr.
+const json* metaOf(const json& j) {
+    for (const char* key : {kMetaKey, kLegacyMetaKey})
+        if (j.contains(key) && j[key].is_object()) return &j[key];
+    return nullptr;
+}
+
+// The metadata object to write to, moving a legacy one under the current key.
+json& metaFor(json& j) {
+    if (!(j.contains(kMetaKey) && j[kMetaKey].is_object())) {
+        json m = j.contains(kLegacyMetaKey) && j[kLegacyMetaKey].is_object() ? j[kLegacyMetaKey] : json::object();
+        j[kMetaKey] = std::move(m);
+    }
+    j.erase(kLegacyMetaKey);
+    return j[kMetaKey];
+}
+
 std::string lower(std::string s) {
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return s;
@@ -71,8 +93,8 @@ void ShaderLibrary::scan() {
                 e.author = info.value("username", "");
                 if (e.author == "None") e.author.clear();
                 if (isShadertoyId(e.id)) e.url = "https://www.shadertoy.com/view/" + e.id;
-                if (j.contains("shaderplayer") && j["shaderplayer"].is_object()) {
-                    const json& m = j["shaderplayer"];
+                if (const json* meta = metaOf(j)) {
+                    const json& m = *meta;
                     e.source = m.value("source", "");
                     if (m.contains("favorite") && m["favorite"].is_boolean()) e.favorite = m["favorite"].get<bool>();
                     if (m.contains("crashed") && m["crashed"].is_boolean()) e.crashed = m["crashed"].get<bool>();
@@ -135,16 +157,14 @@ std::string ShaderLibrary::add(const json& shaderObject, const std::string& sour
     std::string id = check.shader.info.id;
     if (!isShadertoyId(id)) {
         // Keep a previous local id when re-saving our own file, else make one.
-        const std::string prev = obj.contains("shaderplayer") && obj["shaderplayer"].is_object()
-                                     ? obj["shaderplayer"].value("local_id", "")
-                                     : "";
+        const json* m = metaOf(obj);
+        const std::string prev = m ? m->value("local_id", "") : "";
         id = isSafeId(prev) ? prev : newLocalId();
     }
-    json meta = obj.contains("shaderplayer") && obj["shaderplayer"].is_object() ? obj["shaderplayer"] : json::object();
+    json& meta = metaFor(obj);
     meta["source"] = source;
     if (!meta.contains("added")) meta["added"] = isoNow();
     if (!isShadertoyId(check.shader.info.id)) meta["local_id"] = id;
-    obj["shaderplayer"] = meta;
 
     if (!writeFileAtomically(dir_ / (id + ".json"), obj.dump(2), error)) return "";
     LOG_INFO("library: saved '%s' as %s.json", check.shader.info.name.c_str(), id.c_str());
@@ -155,7 +175,7 @@ std::string ShaderLibrary::add(const json& shaderObject, const std::string& sour
 std::string ShaderLibrary::addShader(const Shader& shader, const std::string& source, std::string* error) {
     json obj = shaderToJson(shader);
     if (!isShadertoyId(shader.info.id) && isSafeId(shader.info.id))
-        obj["shaderplayer"] = {{"local_id", shader.info.id}};
+        obj[kMetaKey] = {{"local_id", shader.info.id}};
     return add(obj, source, error);
 }
 
@@ -197,10 +217,10 @@ bool ShaderLibrary::update(const std::string& id, const Shader& edited, std::str
     if (!j.contains("info") || !j["info"].is_object()) j["info"] = json::object();
     j["info"]["name"] = edited.info.name;
     j["info"]["username"] = edited.info.author;
-    if (!j.contains("shaderplayer") || !j["shaderplayer"].is_object()) j["shaderplayer"] = json::object();
-    j["shaderplayer"]["edited"] = isoNow();
-    j["shaderplayer"].erase("crashed");
-    if (!isShadertoyId(id)) j["shaderplayer"]["local_id"] = id;
+    json& meta = metaFor(j);
+    meta["edited"] = isoNow();
+    meta.erase("crashed");
+    if (!isShadertoyId(id)) meta["local_id"] = id;
 
     // Refuse to store something the app can't read back.
     if (!shaderFromJson(j).ok) {
@@ -226,11 +246,11 @@ bool ShaderLibrary::setMeta(const std::string& id, const char* key, const json& 
         if (error) *error = path.string() + " is not valid JSON";
         return false;
     }
-    if (!j.contains("shaderplayer") || !j["shaderplayer"].is_object()) j["shaderplayer"] = json::object();
+    json& meta = metaFor(j);
     if (value.is_null())
-        j["shaderplayer"].erase(key);
+        meta.erase(key);
     else
-        j["shaderplayer"][key] = value;
+        meta[key] = value;
     return writeFileAtomically(path, j.dump(2), error);
 }
 

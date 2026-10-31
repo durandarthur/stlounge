@@ -47,6 +47,7 @@ bool Window::create(const WindowOptions& opts, std::string* error) {
     // Window class / app id, so compositors (e.g. Hyprland window rules) can match it.
     setenv("SDL_VIDEO_WAYLAND_WMCLASS", APP_NAME, 0);
     setenv("SDL_VIDEO_X11_WMCLASS", APP_NAME, 0);
+    setenv("SDL_APP_ID", APP_NAME, 0);  // SDL3's name for both (SDL2 on Arch is sdl2-compat over SDL3)
     SDL_SetHint("SDL_APP_NAME", APP_DISPLAY_NAME);
     // Use EGL for GLES on X11 too (SDL defaults to GLX there).
     SDL_SetHint(SDL_HINT_VIDEO_X11_FORCE_EGL, "1");

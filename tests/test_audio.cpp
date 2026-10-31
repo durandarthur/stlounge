@@ -133,7 +133,7 @@ TEST(analyser_waveform_mapping_and_bad_samples) {
 }
 
 TEST(capture_fails_cleanly_without_server) {
-    EnvGuard env("PULSE_SERVER", "unix:/nonexistent/shaderplayer-test/native");
+    EnvGuard env("PULSE_SERVER", "unix:/nonexistent/stlounge-test/native");
     AudioCapture cap;
     const auto t0 = std::chrono::steady_clock::now();
     cap.start("");

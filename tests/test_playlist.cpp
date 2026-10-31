@@ -334,8 +334,8 @@ TEST(library_favorite_and_duration_persist) {
     std::string text;
     REQUIRE(readTextFile(dir / (id + ".json"), &text, &err));
     const json j = json::parse(text);
-    CHECK(!j["shaderplayer"].contains("favorite"));
-    CHECK(!j["shaderplayer"].contains("duration"));
+    CHECK(!j["stlounge"].contains("favorite"));
+    CHECK(!j["stlounge"].contains("duration"));
 }
 
 // ------------------------------------------------------------------ image files
@@ -468,4 +468,38 @@ TEST(library_update_keeps_what_the_editor_does_not_show) {
     CHECK(edited);
     CHECK(!lib.update("../x", *s, &err));
     CHECK(!lib.update("AbCdEf", *s, &err));  // not in the library
+}
+
+// Files written while the app was still called "shaderplayer" keep their data.
+TEST(library_reads_and_migrates_the_legacy_metadata_key) {
+    const fs::path dir = tempDir("sp_test_library_legacy");
+    std::string err;
+    REQUIRE(writeFileAtomically(dir / "local-0badf00d.json", R"({"info": {"id": "-1", "name": "Old"},
+        "renderpass": [{"type": "image", "code": "void mainImage(out vec4 c, in vec2 f) { c = vec4(1); }"}],
+        "shaderplayer": {"local_id": "local-0badf00d", "favorite": true, "duration": 42, "source": "paste"}})",
+                                &err));
+    ShaderLibrary lib(dir);
+    lib.scan();
+    const LibraryEntry* e = lib.find("local-0badf00d");
+    REQUIRE(e != nullptr);
+    CHECK(e->favorite);
+    CHECK_EQ(e->duration, 42.0);
+    CHECK_EQ(e->source, std::string("paste"));
+
+    // The next write moves it under the current key, keeping every field.
+    CHECK(lib.setDuration("local-0badf00d", 50, &err));
+    std::string text;
+    REQUIRE(readTextFile(dir / "local-0badf00d.json", &text, &err));
+    const json j = json::parse(text);
+    CHECK(!j.contains("shaderplayer"));
+    REQUIRE(j.contains("stlounge"));
+    CHECK_EQ(j["stlounge"]["favorite"], json(true));
+    CHECK_EQ(j["stlounge"]["duration"], json(50));
+    CHECK_EQ(j["stlounge"]["local_id"], json("local-0badf00d"));
+
+    // Re-adding (paste dialog, unchanged JSON) keeps the local id from the legacy key too.
+    const std::string again = lib.add(json::parse(R"({"info": {"id": "-1", "name": "Old"},
+        "renderpass": [{"type": "image", "code": "void mainImage(out vec4 c, in vec2 f) { c = vec4(1); }"}],
+        "shaderplayer": {"local_id": "local-0badf00d"}})"), "import", &err);
+    CHECK_EQ(again, std::string("local-0badf00d"));
 }
