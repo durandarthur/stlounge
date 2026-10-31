@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstdlib>
+#include <vector>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +19,7 @@
 #include "shadertoy/json_format.h"
 #include "shadertoy/renderer.h"
 #include "test.h"
+#include "textures/image_io.h"
 
 using namespace sp;
 using sptest::requireGl;
@@ -357,4 +361,46 @@ TEST(volume_a_check_step3_counters) {
     CHECK_NEAR(a[1], 4.0f, 1e-3);  // volume's iFrame it saw (this frame's)
     CHECK_NEAR(a[2], 5.0f, 1e-3);  // volume drawn 5 times
     CHECK_NEAR(a[3], 5.0f, 1e-3);  // Buffer A drawn 5 times
+}
+
+// Developer aid: SP_DUMP_SAMPLES=<dir> saves a 480x270 picture of each private
+// sample at iTime = 3 s (or SP_DUMP_TIME), to compare with shadertoy.com by eye.
+TEST(real_samples_dump_pictures) {
+    const char* out = std::getenv("SP_DUMP_SAMPLES");
+    if (!out) SKIP("set SP_DUMP_SAMPLES=<dir> to save pictures");
+    const fs::path dir = fs::path(SP_TEST_DATA_DIR) / "private";
+    if (!fs::is_directory(dir)) SKIP("no private samples in tests/data/private");
+    const int w = 480, h = 270;
+    const char* at = std::getenv("SP_DUMP_TIME");
+    const float t0 = at ? static_cast<float>(std::atof(at)) : 3.0f;
+    Fixture f(w, h);
+    for (const auto& de : fs::directory_iterator(dir)) {
+        if (de.path().extension() != ".json") continue;
+        auto parsed = parseShadertoyJson(readText(de.path()));
+        if (parsed.empty() || !parsed[0].ok) continue;
+        ShaderRenderer r(f.ctx());
+        if (f.compile(r, parsed[0].shader) != ShaderRenderer::State::Ready) continue;
+        for (int i = 0; i < 4; ++i) {
+            FrameUniforms u;
+            u.frame = i;
+            u.time = t0 + i / 60.0f;
+            u.resolution[0] = w;
+            u.resolution[1] = h;
+            u.resolution[2] = 1;
+            r.render(u, f.target);
+        }
+        std::vector<float> px(static_cast<size_t>(w) * h * 4);
+        glBindFramebuffer(GL_FRAMEBUFFER, f.target.framebuffer());
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_FLOAT, px.data());
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        std::vector<uint8_t> rgba(px.size());
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w * 4; ++x) {
+                const float v = px[static_cast<size_t>(h - 1 - y) * w * 4 + x];
+                rgba[static_cast<size_t>(y) * w * 4 + x] =
+                    (x % 4 == 3) ? 255 : static_cast<uint8_t>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f));
+            }
+        std::string err;
+        savePng(fs::path(out) / (de.path().stem().string() + ".png"), w, h, rgba.data(), &err);
+    }
 }

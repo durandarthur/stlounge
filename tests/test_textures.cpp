@@ -293,3 +293,28 @@ TEST(artistic_textures_are_deterministic) {
     CHECK(a.pixels == b.pixels);
     CHECK(makeArtisticTexture("nope").width == 0);
 }
+
+// Shaders often use textures as colour or as noise around 0.5: a look-alike that is
+// almost black or almost flat breaks them (Stars and Organic 2 did).
+TEST(artistic_textures_have_usable_brightness_and_contrast) {
+    for (const BuiltinTexture& t : builtinTextures()) {
+        if (t.quality != TextureQuality::Approximation || t.kind != InputType::Texture) continue;
+        const std::string id = t.id;
+        if (id == "font1" || id == "nyancat") continue;  // mostly empty by design
+        const ImageData img = makeArtisticTexture(id);
+        double sum = 0, sum2 = 0;
+        size_t n = 0;
+        for (size_t i = 0; i < img.pixels.size(); i += 4 * 13) {
+            const double l = (0.3 * img.pixels[i] + 0.59 * img.pixels[i + 1] + 0.11 * img.pixels[i + 2]) / 255.0;
+            sum += l;
+            sum2 += l * l;
+            ++n;
+        }
+        const double mean = sum / n, sd = std::sqrt(std::max(0.0, sum2 / n - mean * mean));
+        const double minMean = id == "stars" ? 0.06 : 0.2;
+        if (!(mean >= minMean && mean <= 0.75 && sd >= 0.08))
+            std::printf("    %s: mean %.2f, contrast %.2f\n", id.c_str(), mean, sd);
+        CHECK(mean >= minMean && mean <= 0.75);
+        CHECK(sd >= 0.08);
+    }
+}

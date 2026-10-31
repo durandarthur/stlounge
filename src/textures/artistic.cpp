@@ -247,7 +247,8 @@ ImageData abstract2() {
 ImageData abstract3() {
     return paint(1024, 1024, [](float u, float v) {
         const float r = tileRidged(u + 0.2f * tileFbm(u, v, 4, 4, 301), v, 4, 6, 303);
-        return ramp({{0.10f, 0.12f, 0.16f}, {0.40f, 0.45f, 0.52f}, {0.85f, 0.88f, 0.92f}}, r * r);
+        const float t = smoothstep(0.35f, 0.95f, r);
+        return ramp({{0.05f, 0.06f, 0.09f}, {0.30f, 0.36f, 0.45f}, {0.70f, 0.74f, 0.80f}, {0.98f, 0.98f, 1.0f}}, t);
     });
 }
 
@@ -275,10 +276,15 @@ ImageData organic1() {
 }
 
 ImageData organic2() {
+    // Mid-toned and colourful: shaders use it as nebula colour and as noise around 0.5.
     return paint(1024, 1024, [](float u, float v) {
-        const float r = tileRidged(u, v + 0.15f * tileFbm(u, v, 3, 4, 601), 5, 6, 603);
-        const Rgb c = ramp({{0.05f, 0.12f, 0.10f}, {0.15f, 0.35f, 0.28f}, {0.65f, 0.80f, 0.55f}}, r * r * r);
-        return c * (0.85f + 0.3f * tileFbm(u, v, 32, 3, 605));
+        const float w = warped(u, v, 4, 601, 0.9f);
+        const float r = tileRidged(u, v + 0.15f * tileFbm(u, v, 3, 4, 603), 6, 5, 605);
+        const float t = clamp01(smoothstep(0.25f, 0.8f, w) * 0.8f + 0.35f * r * r - 0.1f);
+        const Rgb c = ramp({{0.08f, 0.16f, 0.18f}, {0.20f, 0.45f, 0.40f}, {0.55f, 0.62f, 0.35f},
+                            {0.90f, 0.70f, 0.38f}, {0.97f, 0.92f, 0.80f}},
+                           t);
+        return c * (0.85f + 0.3f * tileFbm(u, v, 32, 3, 607));
     });
 }
 
@@ -292,10 +298,10 @@ ImageData organic3() {
 ImageData organic4() {
     return paint(1024, 1024, [](float u, float v) {
         // Vertical bark-like streaks: the noise period is 8x finer across than along.
-        const float s = tileFbm(u, v, 16, 2, 6, 801);
-        const float crack = smoothstep(0.32f, 0.22f, tileFbm(u, v, 24, 3, 3, 803));
-        const Rgb c = mix(Rgb{0.18f, 0.13f, 0.09f}, Rgb{0.50f, 0.40f, 0.30f}, s);
-        return c * (1.0f - 0.7f * crack);
+        const float s = smoothstep(0.25f, 0.75f, tileFbm(u, v, 16, 2, 6, 801));
+        const float crack = smoothstep(0.34f, 0.22f, tileFbm(u, v, 24, 3, 3, 803));
+        const Rgb c = ramp({{0.10f, 0.08f, 0.06f}, {0.36f, 0.28f, 0.20f}, {0.70f, 0.60f, 0.48f}}, s);
+        return c * (1.0f - 0.8f * crack);
     });
 }
 
@@ -330,18 +336,26 @@ ImageData rockTiles() {
 
 ImageData rustyMetal() {
     return paint(512, 512, [](float u, float v) {
-        const Rgb steel = Rgb{0.45f, 0.47f, 0.50f} * (0.8f + 0.3f * tileFbm(u, v, 64, 3, 1101));
+        const Rgb steel = Rgb{0.55f, 0.57f, 0.60f} * (0.6f + 0.6f * tileFbm(u, v, 64, 3, 1101));
         const float m = tileFbm(u, v, 4, 6, 1103) + 0.25f * (tileFbm(u, v, 32, 3, 1105) - 0.5f);
-        const float rust = smoothstep(0.45f, 0.58f, m);
-        const Rgb rustCol = mix(Rgb{0.40f, 0.16f, 0.05f}, Rgb{0.78f, 0.42f, 0.16f}, tileFbm(u, v, 16, 4, 1107));
-        const float pit = smoothstep(0.80f, 0.90f, tileFbm(u, v, 48, 2, 1109));
-        return mix(steel, rustCol, rust) * (1.0f - 0.5f * pit);
+        const float rust = smoothstep(0.42f, 0.58f, m);
+        const Rgb rustCol = ramp({{0.22f, 0.08f, 0.03f}, {0.55f, 0.24f, 0.08f}, {0.85f, 0.50f, 0.20f}},
+                                 tileFbm(u, v, 16, 4, 1107));
+        const float pit = smoothstep(0.75f, 0.90f, tileFbm(u, v, 48, 2, 1109));
+        return mix(steel, rustCol, rust) * (1.0f - 0.7f * pit);
     });
 }
 
 ImageData stars() {
-    ImageData img = blankImage(512, 512, 4);
-    for (size_t i = 3; i < img.pixels.size(); i += 4) img.pixels[i] = 255;
+    // A star field over faint coloured nebulae (shaders multiply it into their own colours,
+    // so the space between the stars must not be pure black).
+    ImageData img = paint(512, 512, [](float u, float v) {
+        const float n = warped(u, v, 3, 1203, 0.7f);
+        const float glow = smoothstep(0.35f, 0.85f, n);
+        const Rgb neb = ramp({{0.02f, 0.03f, 0.07f}, {0.10f, 0.08f, 0.22f}, {0.30f, 0.18f, 0.40f}, {0.45f, 0.40f, 0.60f}},
+                             glow);
+        return neb * (0.8f + 0.4f * tileFbm(u, v, 32, 3, 1205));
+    });
     auto add = [&](int x, int y, float k, Rgb tint) {
         uint8_t* p = img.pixels.data() + (static_cast<size_t>(wrap(y, 512)) * 512 + wrap(x, 512)) * 4;
         p[0] = toByte(p[0] / 255.0f + k * tint.r);
@@ -350,13 +364,13 @@ ImageData stars() {
     };
     for (int y = 0; y < 512; ++y)
         for (int x = 0; x < 512; ++x) {
-            if (hashf(x, y, 0, 1201) > 0.012f) continue;
-            const float b = std::pow(hashf(x, y, 1, 1201), 3.0f);
+            if (hashf(x, y, 0, 1201) > 0.03f) continue;
+            const float b = std::pow(hashf(x, y, 1, 1201), 2.0f);
             const float hue = hashf(x, y, 2, 1201);
             const Rgb tint = hue < 0.3f ? Rgb{0.8f, 0.85f, 1.0f} : hue > 0.85f ? Rgb{1.0f, 0.85f, 0.7f} : Rgb{1, 1, 1};
-            add(x, y, 0.15f + 0.85f * b, tint);
-            if (b > 0.5f) {  // bright stars get a small glow
-                for (int d = 0; d < 4; ++d) add(x + (d == 0) - (d == 1), y + (d == 2) - (d == 3), 0.35f * b, tint);
+            add(x, y, 0.25f + 0.75f * b, tint);
+            if (b > 0.4f) {  // bright stars get a small glow
+                for (int d = 0; d < 4; ++d) add(x + (d == 0) - (d == 1), y + (d == 2) - (d == 3), 0.4f * b, tint);
             }
         }
     return img;
