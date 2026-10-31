@@ -14,6 +14,7 @@
 #include "platform/log.h"
 #include "textures/builtin_list.h"
 #include "textures/image_io.h"
+#include "ui/imgui_util.h"
 
 namespace sp {
 
@@ -206,7 +207,7 @@ void App::drawSettingsPanel() {
                     path = saved;  // abandoned edit
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("Full path to an image, then Enter");
                 const std::string error = textures_.overrideError(t.id);
-                if (!error.empty()) ImGui::TextColored(kErrorColor, "%s", error.c_str());
+                if (!error.empty()) textWrappedColored(kErrorColor, error);
                 ImGui::TableNextColumn();
                 if (it != settings_.textureOverrides.end() && ImGui::SmallButton("Clear")) {
                     textureEdits_[t.id].clear();
@@ -229,7 +230,7 @@ void App::drawSettingsPanel() {
         }
         helpMarker("Gives up on shaders that take longer than this to compile (and skips them in the playlist).");
         if (!caps_.parallelCompile)
-            ImGui::TextColored(kErrorColor, "Your driver compiles in the foreground, so the cap can't interrupt it.");
+            textWrappedColored(kErrorColor, "Your driver compiles in the foreground, so the cap can't interrupt it.");
     }
 
     ImGui::Separator();

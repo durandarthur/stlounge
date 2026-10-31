@@ -2,6 +2,7 @@
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
+#include "ui/imgui_util.h"
 
 #include <algorithm>
 
@@ -62,7 +63,7 @@ std::vector<fs::path> FileBrowser::draw() {
         }
         ImGui::SameLine();
         if (ImGui::Checkbox("Hidden", &showHidden_)) list();
-        if (!error_.empty()) ImGui::TextColored(ImVec4(1, 0.45f, 0.4f, 1), "%s", error_.c_str());
+        if (!error_.empty()) textWrappedColored(ImVec4(1, 0.45f, 0.4f, 1), error_);
         ImGui::TextDisabled("Double-click a .json file, tick several, or drag files onto the main window.");
         int jsonCount = 0;
         for (const Item& item : items_) jsonCount += item.isDir ? 0 : 1;

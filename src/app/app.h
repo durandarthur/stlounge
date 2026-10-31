@@ -30,7 +30,6 @@
 #include "ui/overlay.h"
 #include "ui/file_browser.h"
 #include "ui/paste_dialog.h"
-#include "fetch/shadertoy_fetch.h"
 
 namespace sp {
 
@@ -112,8 +111,6 @@ private:
     void drawCurrentShaderInfo();
     void drawLibraryPanel();
     void drawPasteDialog();
-    void startFetch(const std::string& input);
-    void pollFetch();
     void drawErrors();
     void drawAudioStatus();
     void drawAudioSourcePicker();
@@ -193,7 +190,6 @@ private:
     // Library and sources
     std::unique_ptr<ShaderLibrary> library_;
     PasteDialog pasteDialog_;
-    std::unique_ptr<ShadertoyFetcher> fetcher_;  // made on first use, so libcurl only starts if needed
     FileBrowser fileBrowser_;
     std::string libraryFilter_;
     std::vector<std::string> deleteCandidates_;  // ids waiting for delete confirmation

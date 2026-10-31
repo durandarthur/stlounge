@@ -12,6 +12,7 @@
 #include "app/demos.h"
 #include "app_info.h"
 #include "platform/log.h"
+#include "ui/imgui_util.h"
 
 namespace sp {
 
@@ -92,7 +93,7 @@ void App::drawCurrentShaderInfo() {
         ImGui::TextDisabled("License: the author's (ShaderToy default: CC BY-NC-SA 3.0).");
     }
     ImGui::Text("Compile time: %.0f ms", current_->compileMs());
-    for (const std::string& w : current_->warnings()) ImGui::TextColored(kWarnColor, "%s", w.c_str());
+    for (const std::string& w : current_->warnings()) textWrappedColored(kWarnColor, w);
 }
 
 void App::drawInfoPanel() {
@@ -100,7 +101,7 @@ void App::drawInfoPanel() {
     ImGui::SetNextWindowSize(ImVec2(460, 0), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(APP_DISPLAY_NAME " - info")) {
         drawCurrentShaderInfo();
-        if (pending_) ImGui::TextColored(kWarnColor, "Compiling %s...", pending_->shader().info.name.c_str());
+        if (pending_) textWrappedColored(kWarnColor, "Compiling " + pending_->shader().info.name + "...");
         ImGui::Separator();
         ImGui::Text("iTime %.2f   iFrame %d   %s", clock_.time(), clock_.frame(), paused_ ? "[PAUSED]" : "");
         float m[4];
@@ -202,7 +203,7 @@ void App::drawLibraryPanel() {
 
     if (!status_.empty()) {
         const double age = static_cast<double>(SDL_GetTicks()) / 1000.0 - statusTime_;
-        if (age < 15.0) ImGui::TextColored(statusIsError_ ? kErrorColor : kWarnColor, "%s", status_.c_str());
+        if (age < 15.0) textWrappedColored(statusIsError_ ? kErrorColor : kWarnColor, status_);
     }
 
     ImGui::SetNextItemWidth(-1);
@@ -376,7 +377,7 @@ void App::drawPasteDialog() {
             std::string error, id;
             const std::string original = pasteDialog_.unchangedOriginalJson();
             if (!original.empty())
-                id = library_->add(nlohmann::json::parse(original, nullptr, false), pasteDialog_.source(), &error);
+                id = library_->add(nlohmann::json::parse(original, nullptr, false), "import", &error);
             else
                 id = library_->addShader(pasteDialog_.shader(), "paste", &error);
             if (id.empty()) {
@@ -390,12 +391,6 @@ void App::drawPasteDialog() {
             playFromLibrary(id);
             break;
         }
-        case PasteDialog::Result::Fetch:
-            startFetch(pasteDialog_.linkInput());
-            break;
-        case PasteDialog::Result::Cancel:
-            if (fetcher_) fetcher_->cancel();
-            break;
         default:
             break;
     }
@@ -414,7 +409,7 @@ void App::drawAudioStatus() {
             ImGui::TextWrapped("Capturing from %s", audio_.sourceName().c_str());
             break;
         case AudioCapture::State::Failed:
-            ImGui::TextColored(kErrorColor, "Audio unavailable: %s", audio_.error().c_str());
+            textWrappedColored(kErrorColor, "Audio unavailable: " + audio_.error());
             ImGui::TextDisabled("Audio inputs stay silent. Retrying every 10 s.");
             break;
     }
@@ -430,7 +425,7 @@ void App::drawErrors() {
     ImGui::SetNextWindowSize(ImVec2(620, 220), ImGuiCond_FirstUseEver);
     bool open = true;
     if (ImGui::Begin("Shader errors", &open)) {
-        ImGui::TextColored(kErrorColor, "Compile failed. The previous shader keeps running; playlist shaders that "
+        textWrappedColored(kErrorColor, "Compile failed. The previous shader keeps running; playlist shaders that "
                                         "fail are skipped.");
         ImGui::InputTextMultiline("##log", &errorLog_, ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
     }

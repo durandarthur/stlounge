@@ -21,7 +21,7 @@ struct LibraryEntry {
     std::string name;
     std::string author;
     std::string url;
-    std::string source;     // "paste", "import", "fetch"
+    std::string source;     // "paste" or "import"
     fs::path path;
     std::string loadError;  // set if the file can't be parsed (entry still listed)
     bool favorite = false;

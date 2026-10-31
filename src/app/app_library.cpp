@@ -8,7 +8,6 @@
 #include "app/app.h"
 #include "platform/log.h"
 #include "shadertoy/json_format.h"
-#include "shadertoy/shader_ref.h"
 
 namespace sp {
 
@@ -24,44 +23,6 @@ void App::setStatus(const std::string& message, bool error) {
     statusTime_ = static_cast<double>(SDL_GetTicks()) / 1000.0;
     if (error) LOG_WARN("%s", message.c_str());
     else LOG_INFO("%s", message.c_str());
-}
-
-void App::startFetch(const std::string& input) {
-    const std::optional<std::string> id = parseShaderRef(input);
-    if (!id) {
-        pasteDialog_.setStatus("That isn't a shadertoy.com shader link or a 6-character shader ID.");
-        return;
-    }
-    // The library is the cache: a shader that's already there isn't fetched again.
-    if (const LibraryEntry* e = library_->find(*id); e && e->loadError.empty()) {
-        pasteDialog_.close();
-        setStatus("'" + e->name + "' is already in the library");
-        playFromLibrary(*id);
-        return;
-    }
-    if (!fetcher_) fetcher_ = std::make_unique<ShadertoyFetcher>();
-    std::string why;
-    if (!fetcher_->start(*id, static_cast<double>(SDL_GetTicks()) / 1000.0, &why)) {
-        pasteDialog_.setStatus(why);
-        return;
-    }
-    pasteDialog_.setStatus("");
-    pasteDialog_.setFetching(true);
-}
-
-void App::pollFetch() {
-    if (!fetcher_) return;
-    const std::optional<FetchResult> r = fetcher_->poll(static_cast<double>(SDL_GetTicks()) / 1000.0);
-    if (!r) return;
-    pasteDialog_.setFetching(false);
-    if (r->kind == FetchResult::Kind::Cancelled || !pasteDialog_.isOpen()) return;
-    if (r->kind != FetchResult::Kind::Ok) {
-        pasteDialog_.setStatus(r->message);
-        return;
-    }
-    if (!pasteDialog_.fillFromJson(r->json, "Fetched from shadertoy.com. Check it, then add it to the library.",
-                                   "fetch"))
-        pasteDialog_.setStatus("The fetched shader can't be read.");
 }
 
 void App::playFromLibrary(const std::string& id, const LoadRequest& request) {
@@ -83,7 +44,6 @@ void App::playFromLibrary(const std::string& id, const LoadRequest& request) {
 }
 
 void App::openPasteDialog(const std::string& clipboard) {
-    if (fetcher_) fetcher_->cancel();  // a late result must not fill the new dialog
     pasteDialog_.open(clipboard);
     setUiVisible(true);
 }

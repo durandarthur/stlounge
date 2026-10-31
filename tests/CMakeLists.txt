@@ -8,11 +8,10 @@ add_executable(sp_unit_tests
   test_textures.cpp
   test_audio.cpp
   test_import.cpp
-  test_playlist.cpp
-  test_fetch.cpp)
+  test_playlist.cpp)
 target_include_directories(sp_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(sp_unit_tests PRIVATE ${SP_WARNINGS})
-target_link_libraries(sp_unit_tests PRIVATE sp_core sp_audio sp_fetch sp_app)
+target_link_libraries(sp_unit_tests PRIVATE sp_core sp_audio sp_app)
 add_test(NAME unit COMMAND sp_unit_tests)
 
 # GL tests: offscreen GLES 3 context (Mesa surfaceless, EGL device, or default display).

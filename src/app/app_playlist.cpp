@@ -9,6 +9,7 @@
 #include "app/app.h"
 #include "app/demos.h"
 #include "platform/log.h"
+#include "ui/imgui_util.h"
 
 namespace sp {
 
@@ -186,7 +187,7 @@ void App::drawPlaylistDialogs() {
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 18);
         const bool enter = ImGui::InputText("##name", &nameDialogText_, ImGuiInputTextFlags_EnterReturnsTrue);
-        if (!nameDialogError_.empty()) ImGui::TextColored(ImVec4(1, 0.45f, 0.4f, 1), "%s", nameDialogError_.c_str());
+        if (!nameDialogError_.empty()) textWrappedColored(ImVec4(1, 0.45f, 0.4f, 1), nameDialogError_);
         const char* verb = nameDialog_ == NameDialog::New ? "Create" : "Rename";
         if (ImGui::Button(verb) || enter) {
             std::string name = nameDialogText_;

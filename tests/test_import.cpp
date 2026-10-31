@@ -12,6 +12,7 @@
 
 #include "library/library.h"
 #include "shadertoy/json_format.h"
+#include "shadertoy/shader_ref.h"
 #include "shadertoy/wrapper.h"
 #include "test.h"
 #include "textures/builtin_list.h"
@@ -377,4 +378,30 @@ TEST(library_bulk_add_defers_rescan) {
     lib.scan();
     CHECK_EQ(lib.entries().size(), size_t(10));
     fs::remove_all(lib.dir());
+}
+
+TEST(shader_ref_parsing) {
+    CHECK(parseShaderRef("XsX3Rr") == std::optional<std::string>("XsX3Rr"));
+    CHECK(parseShaderRef("  XsX3Rr \n") == std::optional<std::string>("XsX3Rr"));
+    CHECK(parseShaderRef("https://www.shadertoy.com/view/XsX3Rr") == std::optional<std::string>("XsX3Rr"));
+    CHECK(parseShaderRef("http://shadertoy.com/view/XsX3Rr/") == std::optional<std::string>("XsX3Rr"));
+    CHECK(parseShaderRef("HTTPS://WWW.ShaderToy.com/view/XsX3Rr?foo=1") == std::optional<std::string>("XsX3Rr"));
+    CHECK(parseShaderRef("www.shadertoy.com/embed/XsX3Rr#x") == std::optional<std::string>("XsX3Rr"));
+    CHECK(!parseShaderRef(""));
+    CHECK(!parseShaderRef("XsX3R"));
+    CHECK(!parseShaderRef("Xs-3Rr"));
+    CHECK(!parseShaderRef("https://example.com/view/XsX3Rr"));
+    CHECK(!parseShaderRef("https://shadertoy.com.evil.example/view/XsX3Rr"));
+    CHECK(!parseShaderRef("https://www.shadertoy.com/user/XsX3Rr"));
+    CHECK(!parseShaderRef("https://www.shadertoy.com/view/XsX3Rr/extra"));
+    CHECK(!isShaderLink("XsX3Rr"));  // a bare word isn't treated as a link
+    CHECK(isShaderLink(" shadertoy.com/view/XsX3Rr "));
+}
+
+TEST(paste_dialog_explains_links) {
+    PasteDialog d;
+    d.open("https://www.shadertoy.com/view/XsX3Rr");
+    REQUIRE(!d.notes().empty());
+    CHECK(d.notes()[0].find("export") != std::string::npos);
+    CHECK(d.editor().build().passes.size() <= 1);
 }

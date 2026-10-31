@@ -28,7 +28,6 @@ pkg_check_modules(SDL2   REQUIRED IMPORTED_TARGET sdl2)
 pkg_check_modules(EGL    REQUIRED IMPORTED_TARGET egl)
 pkg_check_modules(GLESV2 REQUIRED IMPORTED_TARGET glesv2)
 pkg_check_modules(PULSE  REQUIRED IMPORTED_TARGET libpulse)
-pkg_check_modules(CURL   REQUIRED IMPORTED_TARGET libcurl)
 
 configure_file(src/app_info.h.in ${CMAKE_BINARY_DIR}/generated/app_info.h @ONLY)
 
@@ -78,12 +77,6 @@ add_library(sp_audio STATIC
 target_compile_options(sp_audio PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_audio PUBLIC sp_core PkgConfig::PULSE)
 
-# ---- URL fetch: the only code that uses the network or libcurl. ----
-add_library(sp_fetch STATIC
-  src/fetch/shadertoy_fetch.cpp)
-target_compile_options(sp_fetch PRIVATE ${SP_WARNINGS})
-target_link_libraries(sp_fetch PUBLIC sp_core PRIVATE PkgConfig::CURL)
-
 # ---- GL helpers: GLES 3.0 only, no SDL (usable from headless tests). ----
 add_library(sp_gfx STATIC
   src/gfx/audio_texture.cpp
@@ -111,7 +104,7 @@ add_library(sp_app STATIC
   src/ui/paste_dialog.cpp
   src/ui/shader_editor.cpp)
 target_compile_options(sp_app PRIVATE ${SP_WARNINGS})
-target_link_libraries(sp_app PUBLIC sp_gfx sp_audio sp_fetch imgui PkgConfig::SDL2 PkgConfig::EGL)
+target_link_libraries(sp_app PUBLIC sp_gfx sp_audio imgui PkgConfig::SDL2 PkgConfig::EGL)
 
 add_executable(${APP_NAME} src/main.cpp)
 target_compile_options(${APP_NAME} PRIVATE ${SP_WARNINGS})
