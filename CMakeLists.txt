@@ -49,18 +49,24 @@ set(SP_WARNINGS -Wall -Wextra -Wno-unused-parameter)
 
 # ---- Core: no SDL, no GL. Pure logic that tests can use anywhere. ----
 add_library(sp_core STATIC
+  src/platform/files.cpp
   src/platform/log.cpp
   src/platform/paths.cpp
   src/audio/analyser.cpp
+  src/config/settings.cpp
   src/library/library.cpp
+  src/library/playlist_player.cpp
+  src/library/playlists.cpp
   src/shadertoy/json_format.cpp
   src/shadertoy/mouse.cpp
   src/shadertoy/shader.cpp
   src/shadertoy/uniforms.cpp
   src/shadertoy/wrapper.cpp
   src/textures/builtin_list.cpp
+  src/textures/image_io.cpp
   src/textures/procedural.cpp)
 target_include_directories(sp_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
+target_include_directories(sp_core SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/third_party/stb)
 target_compile_options(sp_core PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_core PUBLIC Threads::Threads nlohmann_json::nlohmann_json)
 

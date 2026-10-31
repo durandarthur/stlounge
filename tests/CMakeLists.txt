@@ -7,7 +7,8 @@ add_executable(sp_unit_tests
   test_mouse_uniforms.cpp
   test_textures.cpp
   test_audio.cpp
-  test_import.cpp)
+  test_import.cpp
+  test_playlist.cpp)
 target_include_directories(sp_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(sp_unit_tests PRIVATE ${SP_WARNINGS})
 target_link_libraries(sp_unit_tests PRIVATE sp_core sp_audio sp_app)

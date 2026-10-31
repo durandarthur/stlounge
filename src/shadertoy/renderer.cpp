@@ -224,7 +224,8 @@ void ShaderRenderer::resolveBindings(PassRuntime& p) {
                     else if (!desc)
                         warn(where + "unknown " + kindName(in.type) + " '" + in.asset + "'; using black.");
                     else if (!desc->available)
-                        warn(where + "'" + desc->label + "' is not available yet; using black.");
+                        warn(where + "'" + desc->label + "' is not available yet; using black." +
+                             (desc->kind == InputType::Texture ? " Settings > Textures can use an image of yours." : ""));
                     neutral(in.type);
                     break;
                 }

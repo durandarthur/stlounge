@@ -6,10 +6,9 @@
 #include <cctype>
 #include <chrono>
 #include <ctime>
-#include <fstream>
 #include <random>
-#include <sstream>
 
+#include "platform/files.h"
 #include "platform/log.h"
 #include "shadertoy/json_format.h"
 
@@ -18,18 +17,6 @@ namespace sp {
 using json = nlohmann::json;
 
 namespace {
-
-bool readFile(const fs::path& path, std::string* out, std::string* error) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) {
-        if (error) *error = "cannot open " + path.string();
-        return false;
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    *out = ss.str();
-    return true;
-}
 
 std::string lower(std::string s) {
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -72,7 +59,7 @@ void ShaderLibrary::scan() {
         e.path = de.path();
         e.id = de.path().stem().string();
         std::string text, err;
-        if (!readFile(e.path, &text, &err)) {
+        if (!readTextFile(e.path, &text, &err)) {
             e.loadError = err;
         } else {
             json j = json::parse(text, nullptr, false);
@@ -84,8 +71,15 @@ void ShaderLibrary::scan() {
                 e.author = info.value("username", "");
                 if (e.author == "None") e.author.clear();
                 if (isShadertoyId(e.id)) e.url = "https://www.shadertoy.com/view/" + e.id;
-                if (j.contains("shaderplayer") && j["shaderplayer"].is_object())
-                    e.source = j["shaderplayer"].value("source", "");
+                if (j.contains("shaderplayer") && j["shaderplayer"].is_object()) {
+                    const json& m = j["shaderplayer"];
+                    e.source = m.value("source", "");
+                    if (m.contains("favorite") && m["favorite"].is_boolean()) e.favorite = m["favorite"].get<bool>();
+                    if (m.contains("duration") && m["duration"].is_number()) {
+                        const double d = m["duration"].get<double>();
+                        if (d > 0 && d < 1e6) e.duration = d;
+                    }
+                }
             }
         }
         if (e.name.empty()) e.name = e.id;
@@ -95,6 +89,12 @@ void ShaderLibrary::scan() {
     if (ec) LOG_WARN("library: cannot read %s: %s", dir_.c_str(), ec.message().c_str());
     std::sort(entries_.begin(), entries_.end(),
               [](const LibraryEntry& a, const LibraryEntry& b) { return lower(a.name) < lower(b.name); });
+}
+
+LibraryEntry* ShaderLibrary::findMutable(const std::string& id) {
+    for (LibraryEntry& e : entries_)
+        if (e.id == id) return &e;
+    return nullptr;
 }
 
 const LibraryEntry* ShaderLibrary::find(const std::string& id) const {
@@ -110,7 +110,7 @@ std::optional<Shader> ShaderLibrary::load(const std::string& id, std::vector<std
         return std::nullopt;
     }
     std::string text;
-    if (!readFile(dir_ / (id + ".json"), &text, error)) return std::nullopt;
+    if (!readTextFile(dir_ / (id + ".json"), &text, error)) return std::nullopt;
     std::vector<ImportResult> results = parseShadertoyJson(text);
     if (results.empty() || !results[0].ok) {
         if (error) *error = results.empty() ? "empty file" : results[0].error;
@@ -120,32 +120,6 @@ std::optional<Shader> ShaderLibrary::load(const std::string& id, std::vector<std
     Shader s = results[0].shader;
     s.info.id = id;  // the file name is authoritative (local ids aren't in the JSON)
     return s;
-}
-
-bool ShaderLibrary::writeAtomically(const fs::path& path, const std::string& text, std::string* error) const {
-    std::error_code ec;
-    fs::create_directories(path.parent_path(), ec);
-    const fs::path tmp = path.string() + ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) {
-            if (error) *error = "cannot write " + tmp.string();
-            return false;
-        }
-        f << text;
-        f.flush();
-        if (!f) {
-            if (error) *error = "write failed for " + tmp.string() + " (disk full?)";
-            return false;
-        }
-    }
-    fs::rename(tmp, path, ec);
-    if (ec) {
-        if (error) *error = "cannot save " + path.string() + ": " + ec.message();
-        fs::remove(tmp, ec);
-        return false;
-    }
-    return true;
 }
 
 std::string ShaderLibrary::add(const json& shaderObject, const std::string& source, std::string* error,
@@ -171,7 +145,7 @@ std::string ShaderLibrary::add(const json& shaderObject, const std::string& sour
     if (!isShadertoyId(check.shader.info.id)) meta["local_id"] = id;
     obj["shaderplayer"] = meta;
 
-    if (!writeAtomically(dir_ / (id + ".json"), obj.dump(2), error)) return "";
+    if (!writeFileAtomically(dir_ / (id + ".json"), obj.dump(2), error)) return "";
     LOG_INFO("library: saved '%s' as %s.json", check.shader.info.name.c_str(), id.c_str());
     if (rescan) scan();
     return id;
@@ -196,6 +170,43 @@ bool ShaderLibrary::remove(const std::string& id, std::string* error, bool resca
     }
     LOG_INFO("library: removed %s", id.c_str());
     if (rescan) scan();
+    return true;
+}
+
+bool ShaderLibrary::setMeta(const std::string& id, const char* key, const json& value, std::string* error) {
+    if (!isSafeId(id)) {
+        if (error) *error = "invalid shader id";
+        return false;
+    }
+    const fs::path path = dir_ / (id + ".json");
+    std::string text;
+    if (!readTextFile(path, &text, error)) return false;
+    json j = json::parse(text, nullptr, false);
+    if (j.is_discarded() || !j.is_object()) {
+        if (error) *error = path.string() + " is not valid JSON";
+        return false;
+    }
+    if (!j.contains("shaderplayer") || !j["shaderplayer"].is_object()) j["shaderplayer"] = json::object();
+    if (value.is_null())
+        j["shaderplayer"].erase(key);
+    else
+        j["shaderplayer"][key] = value;
+    return writeFileAtomically(path, j.dump(2), error);
+}
+
+bool ShaderLibrary::setFavorite(const std::string& id, bool favorite, std::string* error) {
+    if (!setMeta(id, "favorite", favorite ? json(true) : json(nullptr), error)) return false;
+    if (LibraryEntry* e = findMutable(id)) e->favorite = favorite;
+    return true;
+}
+
+bool ShaderLibrary::setDuration(const std::string& id, double seconds, std::string* error) {
+    if (!(seconds >= 0) || seconds > 1e6) {
+        if (error) *error = "invalid duration";
+        return false;
+    }
+    if (!setMeta(id, "duration", seconds > 0 ? json(seconds) : json(nullptr), error)) return false;
+    if (LibraryEntry* e = findMutable(id)) e->duration = seconds;
     return true;
 }
 

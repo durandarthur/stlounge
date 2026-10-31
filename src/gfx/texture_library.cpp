@@ -4,6 +4,7 @@
 
 #include "platform/log.h"
 #include "textures/builtin_list.h"
+#include "textures/image_io.h"
 
 namespace sp {
 
@@ -29,13 +30,66 @@ std::shared_ptr<const ImageData> generate(const std::string& id) {
     return std::make_shared<const ImageData>(std::move(img));
 }
 
+// Channel count of the built-in, so an override keeps the texture's format.
+int builtinChannels(const std::string& id) {
+    return id == "gray_noise_small" || id == "gray_noise_medium" || id == "bayer" ? 1 : 4;
+}
+
 }  // namespace
+
+bool TextureLibrary::canOverride(const std::string& id) {
+    const BuiltinTexture* d = findBuiltinTexture(id);
+    return d && d->kind == InputType::Texture;
+}
+
+std::string TextureLibrary::overrideError(const std::string& id) const {
+    auto it = overrideErrors_.find(id);
+    return it == overrideErrors_.end() ? "" : it->second;
+}
+
+std::string TextureLibrary::setOverride(const std::string& id, const std::string& path) {
+    if (!canOverride(id)) return "only 2D textures can be replaced";
+    overrideErrors_.erase(id);
+    if (path.empty()) overrides_.erase(id);
+    else overrides_[id] = path;
+    cpu_.erase(id);
+    auto src = pixels(id);
+    // Refresh GPU copies in place (same texture names, so bound shaders keep working).
+    for (auto it = gpu_.begin(); it != gpu_.end();) {
+        const std::string& key = it->first;
+        if (key != id && key.rfind(id + "|", 0) != 0) {
+            ++it;
+            continue;
+        }
+        const bool vflip = key.find("|flip") != std::string::npos;
+        const bool srgb = key.find("|srgb") != std::string::npos;
+        if (src && upload(it->second, *src, vflip, srgb, id)) {
+            ++it;
+        } else {
+            if (it->second.id) glDeleteTextures(1, &it->second.id);
+            it = gpu_.erase(it);
+        }
+    }
+    return overrideError(id);
+}
 
 std::shared_ptr<const ImageData> TextureLibrary::pixels(const std::string& id) {
     auto it = cpu_.find(id);
     if (it != cpu_.end()) return it->second;
     const auto start = std::chrono::steady_clock::now();
-    auto img = generate(id);
+    std::shared_ptr<const ImageData> img;
+    if (auto ov = overrides_.find(id); ov != overrides_.end()) {
+        ImageData loaded;
+        std::string error;
+        if (loadImageFile(ov->second, builtinChannels(id), &loaded, &error)) {
+            img = std::make_shared<const ImageData>(std::move(loaded));
+            LOG_INFO("texture '%s' replaced by %s (%dx%d)", id.c_str(), ov->second.c_str(), img->width, img->height);
+        } else {
+            overrideErrors_[id] = error;
+            LOG_WARN("texture '%s': %s; using the built-in", id.c_str(), error.c_str());
+        }
+    }
+    if (!img) img = generate(id);
     if (img) {
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         LOG_DEBUG("generated texture '%s' (%dx%dx%d) in %.1f ms", id.c_str(), img->width, img->height, img->depth, ms);
@@ -46,17 +100,21 @@ std::shared_ptr<const ImageData> TextureLibrary::pixels(const std::string& id) {
 
 const GpuTexture* TextureLibrary::get(const std::string& id, bool vflip, bool srgb) {
     const BuiltinTexture* desc = findBuiltinTexture(id);
-    if (!desc || !desc->available) return nullptr;
+    if (!desc || (!desc->available && !hasOverride(id))) return nullptr;
 
     const std::string key = id + (vflip ? "|flip" : "") + (srgb ? "|srgb" : "");
     if (auto it = gpu_.find(key); it != gpu_.end()) return &it->second;
 
     auto src = pixels(id);
     if (!src) return nullptr;
-    ImageData img = *src;
-    if (vflip) flipRows(img);
+    GpuTexture tex;
+    if (!upload(tex, *src, vflip, srgb, id)) return nullptr;
+    return &(gpu_[key] = tex);
+}
 
-    GpuTexture t;
+bool TextureLibrary::upload(GpuTexture& t, const ImageData& src, bool vflip, bool srgb, const std::string& id) {
+    ImageData img = src;
+    if (vflip) flipRows(img);
     t.width = img.width;
     t.height = img.height;
     t.depth = img.depth;
@@ -67,7 +125,8 @@ const GpuTexture* TextureLibrary::get(const std::string& id, bool vflip, bool sr
     const GLenum format = rgba ? GL_RGBA : GL_RED;
 
     while (glGetError() != GL_NO_ERROR) {}
-    glGenTextures(1, &t.id);
+    const bool fresh = t.id == 0;
+    if (fresh) glGenTextures(1, &t.id);
     glBindTexture(t.target, t.id);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     if (t.target == GL_TEXTURE_3D)
@@ -81,10 +140,13 @@ const GpuTexture* TextureLibrary::get(const std::string& id, bool vflip, bool sr
     glBindTexture(t.target, 0);
     if (GLenum err = glGetError(); err != GL_NO_ERROR) {
         LOG_ERROR("uploading texture '%s' failed (GL error 0x%x)", id.c_str(), err);
-        glDeleteTextures(1, &t.id);
-        return nullptr;
+        if (fresh) {
+            glDeleteTextures(1, &t.id);
+            t.id = 0;
+        }
+        return false;
     }
-    return &(gpu_[key] = t);
+    return true;
 }
 
 void TextureLibrary::clear() {
@@ -92,6 +154,7 @@ void TextureLibrary::clear() {
         if (t.id) glDeleteTextures(1, &t.id);
     gpu_.clear();
     cpu_.clear();
+    overrideErrors_.clear();
 }
 
 }  // namespace sp
