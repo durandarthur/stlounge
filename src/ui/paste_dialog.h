@@ -16,6 +16,10 @@ public:
 
     // Opens the dialog, filled from `clipboard` when it holds shader JSON or code.
     void open(const std::string& clipboard);
+    // Opens the dialog on a library shader; saving then updates that shader.
+    void openForEdit(const Shader& shader, const std::string& libraryId);
+    // The library id being edited, or "" when adding a new shader.
+    const std::string& editId() const { return editId_; }
     void close() { open_ = false; }
     bool isOpen() const { return open_; }
 
@@ -44,6 +48,8 @@ private:
     std::string originalJson_;         // when filled from JSON
     std::string originalPasses_;       // canonical passes of that JSON, to detect edits
     std::string status_;
+    std::string editId_;
+    void clearAll();
 };
 
 }  // namespace sp

@@ -53,6 +53,11 @@ public:
 
     bool remove(const std::string& id, std::string* error, bool rescan = true);
 
+    // Saves edits to an existing shader: its tabs, channels, name and author. The rest
+    // of the file is kept (ShaderToy metadata, favorite, play time, and tabs this app
+    // can't show, like Sound). Clears the crashed flag, since the code changed.
+    bool update(const std::string& id, const Shader& edited, std::string* error);
+
     // Per-shader settings, stored in the file's "shaderplayer" object. They
     // update the in-memory entry too, so no rescan is needed.
     bool setFavorite(const std::string& id, bool favorite, std::string* error);

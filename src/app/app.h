@@ -120,6 +120,7 @@ private:
     void drawCurrentShaderInfo();
     void drawLibraryPanel();
     void drawPasteDialog();
+    void openEditDialog(const std::string& libraryId);
     void drawErrors();
     void drawAudioStatus();
     void drawAudioSourcePicker();

@@ -405,3 +405,20 @@ TEST(paste_dialog_explains_links) {
     CHECK(d.notes()[0].find("export") != std::string::npos);
     CHECK(d.editor().build().passes.size() <= 1);
 }
+
+TEST(paste_dialog_edit_mode) {
+    PasteDialog d;
+    Shader s;
+    s.info.name = "Mine";
+    s.info.author = "me";
+    Pass image;
+    image.type = PassType::Image;
+    image.code = "void mainImage(out vec4 c, in vec2 f) { c = vec4(1); }";
+    s.passes.push_back(image);
+    d.openForEdit(s, "local-12345678");
+    CHECK_EQ(d.editId(), std::string("local-12345678"));
+    CHECK_EQ(d.shader().info.name, std::string("Mine"));
+    CHECK_EQ(d.shader().passes.size(), size_t(1));
+    d.open("");  // adding a new one leaves edit mode
+    CHECK(d.editId().empty());
+}

@@ -17,8 +17,29 @@ std::string canonicalPasses(const Shader& s) { return shaderToJson(s)["renderpas
 
 }  // namespace
 
+void PasteDialog::openForEdit(const Shader& shader, const std::string& libraryId) {
+    open(std::string());
+    notes_.clear();
+    editId_ = libraryId;
+    editor_.setShader(shader);
+    info_ = shader.info;
+    name_ = shader.info.name;
+    author_ = shader.info.author;
+}
+
+void PasteDialog::clearAll() {
+    editor_.clear();
+    name_.clear();
+    author_.clear();
+    notes_.clear();
+    status_.clear();
+    originalJson_.clear();
+    originalPasses_.clear();
+}
+
 void PasteDialog::open(const std::string& clipboard) {
     open_ = true;
+    editId_.clear();
     editor_.clear();
     notes_.clear();
     status_.clear();
@@ -93,7 +114,8 @@ PasteDialog::Result PasteDialog::draw() {
     ImGui::SetNextWindowSize(ImVec2(760, 600), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
     bool keepOpen = true;
-    if (ImGui::Begin("Add shader", &keepOpen)) {
+    const std::string title = std::string(editId_.empty() ? "Add shader" : "Edit shader") + "###shaderdialog";
+    if (ImGui::Begin(title.c_str(), &keepOpen)) {
         const float w = ImGui::GetFontSize() * 16.0f;
         ImGui::SetNextItemWidth(w);
         ImGui::InputText("Name", &name_);
@@ -105,11 +127,23 @@ PasteDialog::Result PasteDialog::draw() {
         for (const std::string& n : notes_) ImGui::TextWrapped("%s", n.c_str());
         if (!status_.empty()) textWrappedColored(ImVec4(1, 0.45f, 0.4f, 1), status_);
 
-        if (ImGui::Button("Add to library")) result = Result::Save;
+        if (ImGui::Button(editId_.empty() ? "Add to library" : "Save changes")) result = Result::Save;
         ImGui::SameLine();
         if (ImGui::Button("Try without saving")) result = Result::Try;
         ImGui::SameLine();
         if (ImGui::Button("Cancel")) result = Result::Cancel;
+        ImGui::SameLine();
+        if (ImGui::Button("Clear all")) ImGui::OpenPopup("##clearall");
+        if (ImGui::BeginPopup("##clearall")) {
+            ImGui::TextUnformatted("Empty every tab and channel, and the name and author?");
+            if (ImGui::Button("Clear all")) {
+                clearAll();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Keep")) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
         ImGui::Separator();
         editor_.draw();
     }

@@ -25,6 +25,17 @@ void App::setStatus(const std::string& message, bool error) {
     else LOG_INFO("%s", message.c_str());
 }
 
+void App::openEditDialog(const std::string& libraryId) {
+    std::string error;
+    const std::optional<Shader> s = library_->load(libraryId, nullptr, &error);
+    if (!s) {
+        setStatus("Can't open it for editing: " + error, true);
+        return;
+    }
+    pasteDialog_.openForEdit(*s, libraryId);
+    setUiVisible(true);
+}
+
 void App::playFromLibrary(const std::string& id, const LoadRequest& request) {
     LoadRequest req = request;
     req.libraryId = id;

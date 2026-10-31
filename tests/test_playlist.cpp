@@ -424,3 +424,48 @@ TEST(library_crashed_flag_persists) {
     third.scan();
     CHECK(!third.find(id)->crashed);
 }
+
+TEST(library_update_keeps_what_the_editor_does_not_show) {
+    const fs::path dir = tempDir("sp_test_library_update");
+    ShaderLibrary lib(dir);
+    lib.scan();
+    std::string err;
+    const std::string id = lib.add(json::parse(R"({"ver": "0.1",
+        "info": {"id": "XsX3Rr", "name": "Original", "username": "someone", "description": "keep me", "likes": 7},
+        "renderpass": [
+          {"type": "image", "name": "Image", "inputs": [], "outputs": [{"id": "4dfGRr", "channel": 0}],
+           "code": "void mainImage(out vec4 c, in vec2 f) { c = vec4(1); }"},
+          {"type": "sound", "name": "Sound", "inputs": [], "outputs": [],
+           "code": "vec2 mainSound(int s, float t) { return vec2(0); }"}]})"),
+                                   "import", &err);
+    REQUIRE(id == "XsX3Rr");
+    CHECK(lib.setFavorite(id, true, &err));
+    CHECK(lib.setCrashed(id, true, &err));
+
+    std::optional<Shader> s = lib.load(id, nullptr, &err);
+    REQUIRE(s.has_value());
+    s->info.name = "Edited";
+    s->passes[0].code = "void mainImage(out vec4 c, in vec2 f) { c = vec4(0.5); }";
+    REQUIRE(lib.update(id, *s, &err));
+
+    const LibraryEntry* e = lib.find(id);
+    REQUIRE(e != nullptr);
+    CHECK_EQ(e->name, std::string("Edited"));
+    CHECK(e->favorite);
+    CHECK(!e->crashed);
+    std::string text;
+    REQUIRE(readTextFile(dir / "XsX3Rr.json", &text, &err));
+    const json j = json::parse(text);
+    CHECK_EQ(j["info"]["description"], json("keep me"));
+    CHECK_EQ(j["info"]["likes"], json(7));
+    CHECK_EQ(j["info"]["id"], json("XsX3Rr"));
+    bool sound = false, edited = false;
+    for (const json& p : j["renderpass"]) {
+        if (p["type"] == "sound") sound = true;
+        if (p["type"] == "image" && p["code"].get<std::string>().find("0.5") != std::string::npos) edited = true;
+    }
+    CHECK(sound);
+    CHECK(edited);
+    CHECK(!lib.update("../x", *s, &err));
+    CHECK(!lib.update("AbCdEf", *s, &err));  // not in the library
+}

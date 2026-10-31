@@ -339,6 +339,7 @@ void App::drawLibraryPanel() {
                         }
                         if (!error.empty()) setStatus(error, true);
                     }
+                    if (ImGui::MenuItem("Edit...")) openEditDialog(e.id);
                     if (ImGui::MenuItem("Play time...")) {
                         durationEditId_ = e.id;
                         durationEditValue_ = static_cast<int>(e.duration);
@@ -402,6 +403,20 @@ void App::drawPasteDialog() {
             break;
         case PasteDialog::Result::Save: {
             std::string error, id;
+            if (!pasteDialog_.editId().empty()) {
+                id = pasteDialog_.editId();
+                if (!library_->update(id, pasteDialog_.shader(), &error)) {
+                    pasteDialog_.setStatus("Could not save: " + error);
+                    break;
+                }
+                pasteDialog_.close();
+                setStatus("Saved changes to '" + pasteDialog_.shader().info.name + "'");
+                playlistDirty_ = true;
+                LoadRequest req;
+                req.fromPlaylist = player_.contains(id);
+                playFromLibrary(id, req);
+                break;
+            }
             const std::string original = pasteDialog_.unchangedOriginalJson();
             if (!original.empty())
                 id = library_->add(nlohmann::json::parse(original, nullptr, false), "import", &error);
