@@ -376,7 +376,7 @@ void App::drawPasteDialog() {
             std::string error, id;
             const std::string original = pasteDialog_.unchangedOriginalJson();
             if (!original.empty())
-                id = library_->add(nlohmann::json::parse(original, nullptr, false), "import", &error);
+                id = library_->add(nlohmann::json::parse(original, nullptr, false), pasteDialog_.source(), &error);
             else
                 id = library_->addShader(pasteDialog_.shader(), "paste", &error);
             if (id.empty()) {
@@ -390,6 +390,12 @@ void App::drawPasteDialog() {
             playFromLibrary(id);
             break;
         }
+        case PasteDialog::Result::Fetch:
+            startFetch(pasteDialog_.linkInput());
+            break;
+        case PasteDialog::Result::Cancel:
+            if (fetcher_) fetcher_->cancel();
+            break;
         default:
             break;
     }

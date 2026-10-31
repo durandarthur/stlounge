@@ -151,6 +151,7 @@ int App::run(const AppOptions& opts) {
         renderFrame(dt);
         window_.swap();
         pollScreenshot();
+        pollFetch();
         saveSettingsIfChanged(false);
         limitFrameRate();
 

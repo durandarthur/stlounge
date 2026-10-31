@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include "shadertoy/json_format.h"
+#include "shadertoy/shader_ref.h"
 
 namespace sp {
 
@@ -15,8 +16,7 @@ std::string canonicalPasses(const Shader& s) { return shaderToJson(s)["renderpas
 
 }  // namespace
 
-void PasteDialog::open(const std::string& clipboard) {
-    open_ = true;
+void PasteDialog::reset() {
     editor_.clear();
     notes_.clear();
     status_.clear();
@@ -25,30 +25,47 @@ void PasteDialog::open(const std::string& clipboard) {
     info_ = ShaderInfo{};
     name_.clear();
     author_.clear();
+    source_ = "import";
+}
+
+bool PasteDialog::fillJson(const std::string& text) {
+    std::string error;
+    std::vector<nlohmann::json> objs = shaderObjects(text, &error);
+    if (objs.empty()) {
+        notes_.push_back("This looks like JSON but isn't a shader: " + error);
+        return false;
+    }
+    if (objs.size() > 1)
+        notes_.push_back("This holds " + std::to_string(objs.size()) +
+                         " shaders; only the first is shown. Use Import JSON for all of them.");
+    ImportResult r = shaderFromJson(objs[0]);
+    if (!r.ok) {
+        notes_.push_back("Can't read the shader JSON: " + r.error);
+        return false;
+    }
+    editor_.setShader(r.shader);
+    info_ = r.shader.info;
+    name_ = r.shader.info.name;
+    author_ = r.shader.info.author;
+    notes_.insert(notes_.end(), r.warnings.begin(), r.warnings.end());
+    originalJson_ = objs[0].dump();
+    originalPasses_ = canonicalPasses(editor_.build());
+    return true;
+}
+
+void PasteDialog::open(const std::string& clipboard) {
+    open_ = true;
+    fetching_ = false;
+    link_.clear();
+    reset();
 
     if (looksLikeShaderJson(clipboard)) {
-        std::string error;
-        std::vector<nlohmann::json> objs = shaderObjects(clipboard, &error);
-        if (objs.empty()) {
-            notes_.push_back("The clipboard looks like JSON but isn't a shader: " + error);
-            return;
-        }
-        if (objs.size() > 1)
-            notes_.push_back("The clipboard holds " + std::to_string(objs.size()) +
-                             " shaders; only the first is shown. Use Import JSON for all of them.");
-        ImportResult r = shaderFromJson(objs[0]);
-        if (!r.ok) {
-            notes_.push_back("Can't read the shader JSON: " + r.error);
-            return;
-        }
-        editor_.setShader(r.shader);
-        info_ = r.shader.info;
-        name_ = r.shader.info.name;
-        author_ = r.shader.info.author;
-        notes_.insert(notes_.end(), r.warnings.begin(), r.warnings.end());
-        originalJson_ = objs[0].dump();
-        originalPasses_ = canonicalPasses(editor_.build());
-        notes_.insert(notes_.begin(), "Filled from ShaderToy JSON in the clipboard.");
+        if (fillJson(clipboard)) notes_.insert(notes_.begin(), "Filled from ShaderToy JSON in the clipboard.");
+        return;
+    }
+    if (isShaderLink(clipboard)) {
+        link_ = clipboard.substr(0, 256);
+        notes_.push_back("The clipboard holds a ShaderToy link: press Fetch, or paste the shader's JSON export.");
         return;
     }
     if (clipboard.find("mainImage") != std::string::npos) {
@@ -61,7 +78,16 @@ void PasteDialog::open(const std::string& clipboard) {
         notes_.push_back("Clipboard code put in the Image tab. Paste other tabs and set the channels if needed.");
         return;
     }
-    notes_.push_back("Paste each tab's code and set the channels as on the shader's ShaderToy page.");
+    notes_.push_back("Paste each tab's code and set the channels as on the shader's ShaderToy page, "
+                     "or enter a ShaderToy link above.");
+}
+
+bool PasteDialog::fillFromJson(const std::string& text, const std::string& note, const std::string& source) {
+    reset();
+    if (!fillJson(text)) return false;
+    source_ = source;
+    notes_.insert(notes_.begin(), note);
+    return true;
 }
 
 Shader PasteDialog::shader() const {
@@ -87,6 +113,17 @@ PasteDialog::Result PasteDialog::draw() {
     bool keepOpen = true;
     if (ImGui::Begin("Add shader", &keepOpen)) {
         const float w = ImGui::GetFontSize() * 16.0f;
+        ImGui::SetNextItemWidth(w * 2.0f);
+        const bool enter = ImGui::InputTextWithHint("##link", "shadertoy.com link or shader ID", &link_,
+                                                    ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(fetching_ || link_.empty());
+        if (ImGui::Button(fetching_ ? "Fetching..." : "Fetch") || (enter && !fetching_ && !link_.empty()))
+            result = Result::Fetch;
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Uses shadertoy.com's unofficial endpoint, which often answers with a browser check.");
+
         ImGui::SetNextItemWidth(w);
         ImGui::InputText("Name", &name_);
         ImGui::SameLine();
