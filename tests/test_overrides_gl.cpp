@@ -162,3 +162,21 @@ TEST(texture_folder_replaces_built_ins) {
     CHECK_EQ(lib.get("organic2", true, false)->width, 1024);
     CHECK_EQ(glGetError(), static_cast<GLenum>(GL_NO_ERROR));
 }
+
+TEST(bundled_images_come_before_generated_textures) {
+    sptest::requireGl();
+    const fs::path bundled = tempDir("sp_test_bundled");
+    writeSolidPng(bundled, "organic2.png", 16, 16, 0, 0, 255);
+    TextureLibrary lib;
+    CHECK(!lib.usesImage("organic2"));
+    CHECK_EQ(lib.setBundledFolder(bundled), 1);
+    CHECK(lib.usesImage("organic2"));
+    CHECK(!lib.usesUserImage("organic2"));
+    CHECK_EQ(lib.get("organic2", false, false)->width, 16);
+    // The user's folder wins over the bundled image.
+    const fs::path user = tempDir("sp_test_bundled_user");
+    writeSolidPng(user, "Organic 2.png", 8, 8, 255, 0, 0);
+    lib.setReplacementFolder(user);
+    CHECK_EQ(lib.get("organic2", false, false)->width, 8);
+    CHECK(lib.usesUserImage("organic2"));
+}

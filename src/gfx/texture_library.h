@@ -43,7 +43,15 @@ public:
     const std::filesystem::path& replacementFolder() const { return folder_; }
     // The folder image used for `id`, or "".
     std::string folderImage(const std::string& id) const;
-    // True when `id` shows a user image (override or folder), not the built-in.
+    // The app's own images for built-in textures (<install>/share/<app>/textures),
+    // used before the generated look-alikes. The user folder and overrides win.
+    int setBundledFolder(const std::filesystem::path& dir);
+    // True when `id` comes from an image (override, user folder or bundled), false
+    // when it is generated (noise, or a look-alike when no image exists).
+    bool usesImage(const std::string& id) const {
+        return hasOverride(id) || folderImages_.count(id) || bundledImages_.count(id);
+    }
+    // True when `id` shows a user image (override or folder).
     bool usesUserImage(const std::string& id) const { return hasOverride(id) || !folderImage(id).empty(); }
     std::string overrideError(const std::string& id) const;
     // Overrides apply to 2D textures only (not cubemaps or volumes).
@@ -55,10 +63,13 @@ public:
 private:
     bool upload(GpuTexture& t, const ImageData& src, bool vflip, bool srgb, const std::string& id);
     void refresh(const std::string& id);  // re-reads the source and updates GPU copies in place
+    // Image files in `dir` named after a 2D built-in, by id.
+    static std::map<std::string, std::string> scanImages(const std::filesystem::path& dir, const char* what);
 
     std::map<std::string, std::string> overrides_;       // id -> file
     std::filesystem::path folder_;
     std::map<std::string, std::string> folderImages_;    // id -> file in folder_
+    std::map<std::string, std::string> bundledImages_;   // id -> file shipped with the app
     std::map<std::string, std::string> overrideErrors_;  // id -> why the file wasn't usable
     std::map<std::string, std::shared_ptr<const ImageData>> cpu_;
     std::map<std::string, GpuTexture> gpu_;  // key: id + variant flags

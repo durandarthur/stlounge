@@ -75,6 +75,10 @@ void App::loadSettingsAtStartup() {
         const std::string error = textures_.setOverride(id, path);
         if (!error.empty()) LOG_WARN("texture override '%s': %s", id.c_str(), error.c_str());
     }
+    // The app's own texture images, then the user's folder (which wins).
+    const fs::path assets = findAssetsDir(APP_NAME);
+    if (assets.empty()) LOG_WARN("bundled textures not found; using generated ones");
+    else textures_.setBundledFolder(assets / "textures");
     // Images named after a texture in <data>/textures replace it (a texture pack).
     std::error_code ec;
     const fs::path folder = paths_.dataDir / "textures";

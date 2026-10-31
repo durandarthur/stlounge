@@ -63,25 +63,29 @@ std::string TextureLibrary::folderImage(const std::string& id) const {
     return it == folderImages_.end() ? "" : it->second;
 }
 
-int TextureLibrary::setReplacementFolder(const std::filesystem::path& dir) {
-    const std::map<std::string, std::string> before = folderImages_;
-    folder_ = dir;
-    folderImages_.clear();
+std::map<std::string, std::string> TextureLibrary::scanImages(const std::filesystem::path& dir, const char* what) {
+    std::map<std::string, std::string> found;
     std::error_code ec;
     for (const auto& de : std::filesystem::directory_iterator(dir, ec)) {
-        if (!de.is_regular_file(ec)) continue;
+        if (!de.is_regular_file(ec) || de.path().filename().string().rfind('.', 0) == 0) continue;
         std::string ext = de.path().extension().string();
         for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp" && ext != ".tga") continue;
         const BuiltinTexture* t = findBuiltinByFileName(de.path().stem().string());
         if (!t || !canOverride(t->id)) {
-            LOG_WARN("textures folder: '%s' doesn't name a 2D texture; ignored", de.path().filename().c_str());
+            LOG_WARN("%s: '%s' doesn't name a 2D texture; ignored", what, de.path().filename().c_str());
             continue;
         }
-        if (folderImages_.count(t->id))
-            LOG_WARN("textures folder: two images for '%s'; using %s", t->label, de.path().filename().c_str());
-        folderImages_[t->id] = de.path().string();
+        if (found.count(t->id)) LOG_WARN("%s: two images for '%s'; using %s", what, t->label, de.path().filename().c_str());
+        found[t->id] = de.path().string();
     }
+    return found;
+}
+
+int TextureLibrary::setReplacementFolder(const std::filesystem::path& dir) {
+    const std::map<std::string, std::string> before = folderImages_;
+    folder_ = dir;
+    folderImages_ = scanImages(dir, "textures folder");
     // Update textures whose image appeared, changed or went away (files may have been
     // edited in place, so every folder texture is re-read).
     for (const auto& [id, file] : before)
@@ -90,6 +94,13 @@ int TextureLibrary::setReplacementFolder(const std::filesystem::path& dir) {
     if (!folderImages_.empty())
         LOG_INFO("textures folder %s: %zu replacements", dir.c_str(), folderImages_.size());
     return static_cast<int>(folderImages_.size());
+}
+
+int TextureLibrary::setBundledFolder(const std::filesystem::path& dir) {
+    bundledImages_ = scanImages(dir, "bundled textures");
+    for (const auto& [id, file] : bundledImages_) refresh(id);
+    LOG_INFO("bundled textures: %zu in %s", bundledImages_.size(), dir.c_str());
+    return static_cast<int>(bundledImages_.size());
 }
 
 void TextureLibrary::refresh(const std::string& id) {
@@ -125,22 +136,23 @@ std::shared_ptr<const ImageData> TextureLibrary::pixels(const std::string& id) {
     std::shared_ptr<const ImageData> img;
     std::string file;
     if (auto ov = overrides_.find(id); ov != overrides_.end()) file = ov->second;
-    else file = folderImage(id);
+    else if (auto f = folderImages_.find(id); f != folderImages_.end()) file = f->second;
+    else if (auto b = bundledImages_.find(id); b != bundledImages_.end()) file = b->second;
     if (!file.empty()) {
         ImageData loaded;
         std::string error;
         if (loadImageFile(file, builtinChannels(id), &loaded, &error)) {
             img = std::make_shared<const ImageData>(std::move(loaded));
-            LOG_INFO("texture '%s' replaced by %s (%dx%d)", id.c_str(), file.c_str(), img->width, img->height);
+            LOG_DEBUG("texture '%s' from %s (%dx%d)", id.c_str(), file.c_str(), img->width, img->height);
         } else {
             overrideErrors_[id] = error;
-            LOG_WARN("texture '%s': %s; using the built-in", id.c_str(), error.c_str());
+            LOG_WARN("texture '%s': %s; using the generated one", id.c_str(), error.c_str());
         }
     }
     if (!img) img = generate(id);
     if (img) {
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-        LOG_DEBUG("generated texture '%s' (%dx%dx%d) in %.1f ms", id.c_str(), img->width, img->height, img->depth, ms);
+        LOG_DEBUG("texture '%s' ready (%dx%dx%d) in %.1f ms", id.c_str(), img->width, img->height, img->depth, ms);
     }
     cpu_[id] = img;
     return img;
@@ -148,7 +160,7 @@ std::shared_ptr<const ImageData> TextureLibrary::pixels(const std::string& id) {
 
 const GpuTexture* TextureLibrary::get(const std::string& id, bool vflip, bool srgb) {
     const BuiltinTexture* desc = findBuiltinTexture(id);
-    if (!desc || (!desc->available && !usesUserImage(id))) return nullptr;
+    if (!desc || (!desc->available && !usesImage(id))) return nullptr;
 
     if (desc->kind == InputType::Cubemap) vflip = false;  // faces are generated from directions
     const std::string key = id + (vflip ? "|flip" : "") + (srgb ? "|srgb" : "");
@@ -159,7 +171,8 @@ const GpuTexture* TextureLibrary::get(const std::string& id, bool vflip, bool sr
     GpuTexture tex;
     if (!upload(tex, *src, vflip, srgb, id)) return nullptr;
     // Look-alikes are big and cheap to remake, so their CPU copy isn't kept around.
-    if (desc->quality == TextureQuality::Approximation && !usesUserImage(id)) cpu_.erase(id);
+    // Big images and look-alikes are cheap to re-read or remake, so the CPU copy isn't kept.
+    if (desc->quality == TextureQuality::Approximation || usesImage(id)) cpu_.erase(id);
     return &(gpu_[key] = tex);
 }
 

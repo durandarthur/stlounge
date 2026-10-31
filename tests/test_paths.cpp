@@ -78,3 +78,11 @@ TEST(paths_ensure_creates_dirs) {
     CHECK(fs::is_directory(base / "state"));
     fs::remove_all(base);
 }
+
+TEST(asset_dir_candidates_order) {
+    const auto c = sp::assetDirCandidates("/opt/app/usr/bin/shaderplayer", "shaderplayer", "/src/assets");
+    REQUIRE(c.size() == 2u);
+    CHECK_EQ(c[0], fs::path("/opt/app/usr/share/shaderplayer"));
+    CHECK_EQ(c[1], fs::path("/src/assets"));
+    CHECK_EQ(sp::assetDirCandidates("", "x", "").size(), size_t(0));
+}

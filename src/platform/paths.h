@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace sp {
 
@@ -35,5 +36,13 @@ std::optional<fs::path> parsePicturesDir(const std::string& userDirsContents, co
 // "<cwd>/<app>-data/..." and sets usingFallback. Returns false only if
 // even the fallback can't be created. `message` explains what happened.
 bool ensureAppDirs(AppPaths& paths, const std::string& appName, std::string* message);
+
+// Where the app's own files (bundled textures) may be, in order: next to an installed
+// or AppImage binary (<exe>/../share/<app>), then the source tree's assets/ (running
+// from the build folder).
+std::vector<fs::path> assetDirCandidates(const fs::path& exe, const std::string& appName,
+                                         const fs::path& sourceAssets);
+// The first candidate that has a textures/ folder, or "" (generated textures only).
+fs::path findAssetsDir(const std::string& appName);
 
 }  // namespace sp

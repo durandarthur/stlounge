@@ -10,6 +10,9 @@
 #include "textures/artistic.h"
 #include "textures/builtin_list.h"
 #include "textures/image_io.h"
+
+#include <filesystem>
+namespace fs = std::filesystem;
 #include "textures/procedural.h"
 #include "ui/shader_editor.h"
 
@@ -356,4 +359,36 @@ TEST(builtin_lookup_by_file_name) {
     CHECK_EQ(id("Organic"), std::string(""));
     CHECK_EQ(id(""), std::string(""));
     CHECK_EQ(id("my holiday"), std::string(""));
+}
+
+// ---------------------------------------------------------------- bundled images
+
+TEST(bundled_textures_match_the_catalogue) {
+    const fs::path dir = fs::path(SP_TEST_DATA_DIR) / ".." / ".." / "assets" / "textures";
+    REQUIRE(fs::is_directory(dir));
+    std::set<std::string> seen;
+    for (const auto& de : fs::directory_iterator(dir)) {
+        if (de.path().filename().string()[0] == '.') continue;
+        const BuiltinTexture* t = findBuiltinByFileName(de.path().stem().string());
+        REQUIRE(t != nullptr);
+        CHECK_EQ(de.path().stem().string(), std::string(t->id));  // stable names: the id
+        CHECK(t->kind == InputType::Texture);
+        CHECK(seen.insert(t->id).second);
+        ImageData img;
+        std::string err;
+        const int channels = std::string(t->id).find("gray_noise") == 0 || std::string(t->id) == "bayer" ? 1 : 4;
+        REQUIRE(loadImageFile(de.path(), channels, &img, &err));
+        CHECK_EQ(img.width, t->size);
+        CHECK_EQ(img.height, std::string(t->id) == "nyancat" ? 32 : t->size);
+        if (std::string(t->id) == "rgba_noise_medium") {
+            int bad = 0;
+            for (int y = 0; y < 256; ++y)
+                for (int x = 0; x < 256; ++x) {
+                    bad += img.at(x, y, 0) != img.at((x + 37) % 256, (y + 17) % 256, 1);
+                    bad += img.at(x, y, 2) != img.at((x + 37) % 256, (y + 17) % 256, 3);
+                }
+            CHECK_EQ(bad, 0);
+        }
+    }
+    CHECK_EQ(seen.size(), size_t(22));  // every 2D texture has an image
 }

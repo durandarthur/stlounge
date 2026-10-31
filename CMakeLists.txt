@@ -72,6 +72,8 @@ add_library(sp_core STATIC
 target_include_directories(sp_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_include_directories(sp_core SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/third_party/stb)
 target_compile_options(sp_core PRIVATE ${SP_WARNINGS})
+# Lets a binary in the build folder find assets/ without installing.
+target_compile_definitions(sp_core PRIVATE SP_SOURCE_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
 # imgui only for Font 1: its embedded font file and stb_truetype (see textures/font_texture.cpp).
 target_link_libraries(sp_core PUBLIC Threads::Threads nlohmann_json::nlohmann_json PRIVATE imgui)
 
@@ -117,6 +119,7 @@ target_link_libraries(${APP_NAME} PRIVATE sp_app)
 
 include(GNUInstallDirs)
 install(TARGETS ${APP_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(DIRECTORY assets/textures DESTINATION ${CMAKE_INSTALL_DATADIR}/${APP_NAME})
 
 if(SP_BUILD_TESTS)
   enable_testing()

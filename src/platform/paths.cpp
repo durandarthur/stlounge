@@ -119,4 +119,25 @@ bool ensureAppDirs(AppPaths& paths, const std::string& appName, std::string* mes
     return true;
 }
 
+std::vector<fs::path> assetDirCandidates(const fs::path& exe, const std::string& appName,
+                                         const fs::path& sourceAssets) {
+    std::vector<fs::path> out;
+    if (!exe.empty()) out.push_back(exe.parent_path().parent_path() / "share" / appName);
+    if (!sourceAssets.empty()) out.push_back(sourceAssets);
+    return out;
+}
+
+fs::path findAssetsDir(const std::string& appName) {
+    std::error_code ec;
+    const fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+#ifdef SP_SOURCE_ASSETS_DIR
+    const fs::path source = SP_SOURCE_ASSETS_DIR;
+#else
+    const fs::path source;
+#endif
+    for (const fs::path& d : assetDirCandidates(ec ? fs::path() : exe, appName, source))
+        if (fs::is_directory(d / "textures", ec)) return d;
+    return {};
+}
+
 }  // namespace sp

@@ -52,7 +52,8 @@ const std::vector<SourceItem>& sourceItems() {
                 in.sampler = {Filter::Mipmap, Wrap::Repeat, t.kind != InputType::Cubemap, false};
                 std::string label = t.label;
                 if (!t.available) label += " (not available)";
-                else if (t.quality == TextureQuality::Approximation) label += " (look-alike)";
+                else if (t.quality == TextureQuality::Approximation && t.kind == InputType::Cubemap)
+                    label += " (look-alike)";  // 2D textures ship as images; cubemaps are generated
                 v.push_back({section, label, in});
             }
         }
