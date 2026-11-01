@@ -1,6 +1,6 @@
-# Builds and tests on every push and pull request, and builds the AppImage.
-# On a version tag (v1.2.3) the AppImage is attached to that tag's GitHub release
-# (the release is created if it doesn't exist yet).
+# Builds and tests on every push and pull request, and builds the AppImage and the
+# Flatpak bundle. On a version tag (v1.2.3) both are attached to that tag's GitHub
+# release (the release is created if it doesn't exist yet).
 name: Build
 
 on:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # to attach the AppImage to a release
+  contents: read
 
 jobs:
   appimage:
@@ -48,9 +48,43 @@ jobs:
           path: build-appimage/*.AppImage
           if-no-files-found: error
 
-      - name: Attach the AppImage to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+  flatpak:
+    runs-on: ubuntu-latest
+    # Flathub's image with the runtime the manifest uses already installed.
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read the version
+        id: version
+        run: echo "version=$(sed -n 's/^set(APP_VERSION *"\(.*\)")$/\1/p' CMakeLists.txt)" >> "$GITHUB_OUTPUT"
+
+      # The bundle points at Flathub for the runtime, so installing it fetches that too.
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/io.github.durandarthur.stlounge.yml
+          bundle: stlounge-${{ steps.version.outputs.version }}-x86_64.flatpak
+          artifact-name: Flatpak
+          cache-key: flatpak-builder-${{ github.sha }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [appimage, flatpak]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # to create the release and attach files
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach the AppImage and Flatpak to the release
         uses: softprops/action-gh-release@v3
         with:
-          files: build-appimage/*.AppImage
+          files: |
+            dist/*.AppImage
+            dist/*.flatpak
           fail_on_unmatched_files: true

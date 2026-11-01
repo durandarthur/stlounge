@@ -52,7 +52,24 @@ chmod +x stlounge-*-x86_64.AppImage
 Requirements:
 - A GPU driver (NVIDIA or Mesa) with OpenGL ES 3.0 through EGL. Every current desktop driver
   has it.
-- A glibc at least as new as the one on the machine that built the AppImage.
+- glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later).
+
+### Flatpak
+
+Download `stlounge-<version>-x86_64.flatpak` from the
+[releases page](https://github.com/durandarthur/stlounge/releases) and install it:
+
+```sh
+flatpak install --user stlounge-*-x86_64.flatpak
+flatpak run io.github.durandarthur.stlounge
+```
+
+It also appears in your applications menu. Flatpak downloads the runtime it needs from Flathub
+the first time. There are no automatic updates: install the new file from each release.
+
+The Flatpak keeps its own settings and library in `~/.var/app/io.github.durandarthur.stlounge/`,
+separate from the AppImage or a source build. Its file browser can read your Downloads and
+Pictures folders, and screenshots go to `~/Pictures/stlounge`.
 
 ### From source
 
@@ -224,8 +241,8 @@ ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-asan --output-on-failure
 ```
 
 The result is `build-appimage/stlounge-<version>-x86_64.AppImage`. GitHub Actions
-(`.github/workflows/build.yml`) builds it in an Ubuntu 22.04 container on every push and attaches
-it to the release when a `v*` tag is pushed.
+(`.github/workflows/build.yml`) builds it in an Ubuntu 22.04 container on every push, along with
+the Flatpak bundle, and attaches both to the release when a `v*` tag is pushed.
 
 - It needs `linuxdeploy` and `appimagetool`. If they aren't installed, the script downloads
   them into `build-appimage/tools/` (`--no-download` prevents this). To pin them, add their
