@@ -4,6 +4,7 @@
 //
 // Row 0 of `pixels` is uploaded as texture row t=0 when vflip is off.
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
