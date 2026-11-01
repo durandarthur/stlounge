@@ -1,0 +1,35 @@
+# Maintainer: durandarthur durandarthur09@outlook.fr
+#
+# Source package for the AUR. Copy this file into the AUR git repo, then for each release:
+#   update pkgver (and reset pkgrel=1), run updpkgsums, makepkg --printsrcinfo > .SRCINFO
+
+pkgname=stlounge
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Lightweight player for ShaderToy shaders, with playlists and desktop-audio reactivity"
+arch=('x86_64')
+url="https://github.com/durandarthur/stlounge"
+license=('MIT')
+depends=('sdl2' 'libpulse' 'libglvnd' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
+makedepends=('cmake' 'ninja' 'nlohmann-json')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')  # replace with updpkgsums once the v$pkgver tag is on GitHub
+
+build() {
+  cmake -S "$pkgname-$pkgver" -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DSP_USE_SOURCE_ASSETS=OFF
+  cmake --build build
+}
+
+check() {
+  # GPU tests skip themselves when no OpenGL ES context is available (clean chroot).
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 "$pkgname-$pkgver/LICENSE" -t "$pkgdir/usr/share/licenses/$pkgname/"
+  install -Dm644 "$pkgname-$pkgver/third_party/imgui/LICENSE.txt" "$pkgdir/usr/share/licenses/$pkgname/imgui-LICENSE.txt"
+}

@@ -167,7 +167,7 @@ TEST(real_samples_compile_and_render) {
     CHECK_EQ(ok, total);
 }
 
-// The diagnostic from docs/volume-a-check.md must be all green in this app.
+// The diagnostic from docs/tests/volume-a-check.md must be all green in this app.
 TEST(volume_a_check_doc_shader_is_green) {
     Fixture f(64, 64);
     Shader s;
@@ -228,7 +228,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
     }
 }
 
-// Step 2 of docs/volume-a-check.md: the number-printing Image tab must compile and show
+// Step 2 of docs/tests/volume-a-check.md: the number-printing Image tab must compile and show
 // the expected values (checked by reading back what the volume holds, not the glyphs).
 TEST(volume_a_check_numbers_shader_compiles) {
     Fixture f(320, 180);
@@ -337,11 +337,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
     CHECK(ink > 0);
 }
 
-// Step 3 of docs/volume-a-check.md: run the JSON the doc ships and check the
+// Step 3 of docs/tests/volume-a-check.md: run the JSON the doc ships and check the
 // counters Buffer A stores, which are what this app expects the site to show.
 TEST(volume_a_check_step3_counters) {
     Fixture f(320, 180);
-    auto parsed = parseShadertoyJson(readText(fs::path(SP_TEST_DATA_DIR) / ".." / ".." / "docs" /
+    auto parsed = parseShadertoyJson(readText(fs::path(SP_TEST_DATA_DIR) / ".." / ".." / "docs" / "tests" /
                                               "volume-a-check-step3.json"));
     REQUIRE(parsed.size() == size_t(1) && parsed[0].ok);
     CHECK(parsed[0].warnings.empty());

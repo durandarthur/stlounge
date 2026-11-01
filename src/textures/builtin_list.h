@@ -10,7 +10,7 @@ namespace sp {
 
 enum class TextureQuality {
     Procedural,     // generated; statistically equivalent to the original
-    Approximation,  // artistic texture, only a look-alike
+    Approximation,  // artistic texture: an image if shipped, else a generated look-alike
 };
 
 struct BuiltinTexture {

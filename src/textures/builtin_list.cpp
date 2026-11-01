@@ -24,7 +24,8 @@ const std::vector<BuiltinTexture>& builtinTextures() {
          "27012b4eadd0c3ce12498b867058e4f717ce79e10a99568cca461682d84a4b04"},
         {"rgba_noise_3d", "RGBA Noise3D", InputType::Volume, 32, Q::Procedural, true, "XdX3Rr",
          "aea6b99da1d53055107966b59ac5444fc8bc7b3ce2d0bbb6a4a3cbae1d97f3aa"},
-        // Artistic textures: procedural look-alikes (textures/artistic.cpp), not the originals.
+        // Artistic textures. The 2D ones ship as images (assets/textures); textures/artistic.cpp
+        // generates look-alikes for the cubemaps, and for a 2D texture whose image is missing.
         {"abstract1", "Abstract 1", InputType::Texture, 1024, Q::Approximation, true, "XdX3Rn",
          "52d2a8f514c4fd2d9866587f4d7b2a5bfa1a11a0e772077d7682deb8b3b517e5"},
         {"abstract2", "Abstract 2", InputType::Texture, 512, Q::Approximation, true, "4dX3Rn",

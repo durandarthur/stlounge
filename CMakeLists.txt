@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---------------------------------------------------------------------------
 set(APP_NAME         "stlounge")
 set(APP_DISPLAY_NAME "stlounge")
-set(APP_VERSION      "0.1.0")
+set(APP_VERSION      "1.0.0")
 
 project(${APP_NAME} VERSION ${APP_VERSION} LANGUAGES C CXX)
 
@@ -20,6 +20,9 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 option(SP_BUILD_TESTS "Build unit and headless GL tests" ON)
+# Lets a binary in the build folder find assets/ without installing, by building the
+# source path into it. Packages turn it off: installed copies use <prefix>/share/<app>.
+option(SP_USE_SOURCE_ASSETS "Look for assets/ in the source tree as a fallback" ON)
 
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
@@ -72,8 +75,9 @@ add_library(sp_core STATIC
 target_include_directories(sp_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_include_directories(sp_core SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/third_party/stb)
 target_compile_options(sp_core PRIVATE ${SP_WARNINGS})
-# Lets a binary in the build folder find assets/ without installing.
-target_compile_definitions(sp_core PRIVATE SP_SOURCE_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
+if(SP_USE_SOURCE_ASSETS)
+  target_compile_definitions(sp_core PRIVATE SP_SOURCE_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
+endif()
 # imgui only for Font 1: its embedded font file and stb_truetype (see textures/font_texture.cpp).
 target_link_libraries(sp_core PUBLIC Threads::Threads nlohmann_json::nlohmann_json PRIVATE imgui)
 

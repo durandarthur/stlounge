@@ -105,7 +105,7 @@ APPIMAGETOOL="$(tool appimagetool "${APPIMAGETOOL_URL:-https://github.com/AppIma
 
 echo "== building $APP_NAME $APP_VERSION (release)"
 [[ $CLEAN == 1 ]] && rm -rf "$OUT/build"
-cmake -S "$ROOT" -B "$OUT/build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DSP_BUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/usr
+cmake -S "$ROOT" -B "$OUT/build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DSP_BUILD_TESTS=OFF -DSP_USE_SOURCE_ASSETS=OFF -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build "$OUT/build"
 rm -rf "$APPDIR"
 DESTDIR="$APPDIR" cmake --install "$OUT/build"

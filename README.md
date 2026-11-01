@@ -233,6 +233,12 @@ The result is `build-appimage/stlounge-<version>-x86_64.AppImage`.
   on an up-to-date Arch, that rules out most non-rolling distributions; for wider
   compatibility, build in an older distribution (for example an Ubuntu 22.04 container).
 
+### Packaging
+
+`packaging/aur/PKGBUILD` builds the AUR package from a tagged release. Distribution packages
+should configure with `-DSP_USE_SOURCE_ASSETS=OFF`, so the binary only looks for its textures
+in `<prefix>/share/stlounge` and doesn't carry the build folder's path.
+
 ### Code layout
 
 | Folder | Contents |

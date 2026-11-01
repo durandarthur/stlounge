@@ -170,7 +170,6 @@ const GpuTexture* TextureLibrary::get(const std::string& id, bool vflip, bool sr
     if (!src) return nullptr;
     GpuTexture tex;
     if (!upload(tex, *src, vflip, srgb, id)) return nullptr;
-    // Look-alikes are big and cheap to remake, so their CPU copy isn't kept around.
     // Big images and look-alikes are cheap to re-read or remake, so the CPU copy isn't kept.
     if (desc->quality == TextureQuality::Approximation || usesImage(id)) cpu_.erase(id);
     return &(gpu_[key] = tex);

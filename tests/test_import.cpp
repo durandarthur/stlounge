@@ -354,7 +354,7 @@ TEST(import_catalogues_map_every_builtin_texture) {
 }
 
 TEST(docs_volume_check_json_imports) {
-    auto r = parseShadertoyJson(readText(kData / ".." / ".." / "docs" / "volume-a-check.json"));
+    auto r = parseShadertoyJson(readText(kData / ".." / ".." / "docs" / "tests" / "volume-a-check.json"));
     REQUIRE(r.size() == size_t(1) && r[0].ok);
     CHECK(r[0].warnings.empty());
     REQUIRE(r[0].shader.volumePass() != nullptr);

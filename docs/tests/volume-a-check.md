@@ -12,7 +12,7 @@ Choices 1 and 2 *could* differ. The shader below tests both:
 
 - **On shadertoy.com:** make a new shader, add a Volume A tab and Buffer A, paste each tab's code
   and set the channels as noted.
-- **In this app:** import `docs/volume-a-check.json` (Library → Import JSON file, or drag it onto
+- **In this app:** import `docs/tests/volume-a-check.json` (Library → Import JSON file, or drag it onto
   the window). It should be all green.
 
 ## Reading the result
@@ -173,7 +173,7 @@ channels:
 
 Then compile, press **rewind** (⏮, resets `iFrame` to 0), let it run for about 10 seconds and
 take a screenshot **while it runs**. Don't pause, and don't edit anything after the rewind. In
-the app, import `docs/volume-a-check-step3.json`.
+the app, import `docs/tests/volume-a-check-step3.json`.
 
 | Row | Value | This app shows |
 |---|---|---|
