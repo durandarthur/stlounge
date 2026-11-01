@@ -7,3 +7,5 @@ compile_commands.json
 /*-data/
 # Real shaders by other authors, used only for local tests (not committed).
 /tests/data/private/
+deps.md
+SPEC.md
