@@ -9,3 +9,4 @@ compile_commands.json
 /tests/data/private/
 deps.md
 SPEC.md
+**/.claude/
