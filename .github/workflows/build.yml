@@ -30,7 +30,7 @@ jobs:
             libsdl2-dev libpulse-dev nlohmann-json3-dev libegl-dev libgles-dev \
             libegl-mesa0 libgl1-mesa-dri
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # GPU tests run on Mesa's software renderer (no GPU on the runner).
       - name: Build and test
@@ -42,7 +42,7 @@ jobs:
       - name: Build the AppImage
         run: packaging/build-appimage.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: AppImage
           path: build-appimage/*.AppImage
@@ -50,7 +50,7 @@ jobs:
 
       - name: Attach the AppImage to the release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: build-appimage/*.AppImage
           fail_on_unmatched_files: true
