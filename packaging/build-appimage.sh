@@ -51,7 +51,7 @@ done
 
 [[ "$(uname -m)" == x86_64 ]] || die "this script builds x86_64 AppImages only (this machine: $(uname -m))"
 
-# The app identity, from the three set() lines at the top of CMakeLists.txt.
+# The app identity, from the set() lines at the top of CMakeLists.txt.
 read_cmake_var() {
     local value
     value="$(sed -n "s/^set($1 *\"\\([^\"]*\\)\")\$/\\1/p" "$ROOT/CMakeLists.txt")"
@@ -61,8 +61,10 @@ read_cmake_var() {
 }
 APP_NAME="$(read_cmake_var APP_NAME)"
 APP_VERSION="$(read_cmake_var APP_VERSION)"
+APP_ID="$(read_cmake_var APP_ID)"  # names the desktop file and icon
 [[ "$APP_NAME" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || die "APP_NAME '$APP_NAME' isn't a valid file name"
 [[ "$APP_VERSION" =~ ^[0-9][0-9A-Za-z.+-]*$ ]] || die "APP_VERSION '$APP_VERSION' isn't a version"
+[[ "$APP_ID" =~ ^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$ ]] || die "APP_ID '$APP_ID' isn't a reverse-DNS id"
 
 # AppImages normally need FUSE; this makes the tools run without it.
 export APPIMAGE_EXTRACT_AND_RUN=1
@@ -111,9 +113,9 @@ rm -rf "$APPDIR"
 DESTDIR="$APPDIR" cmake --install "$OUT/build"
 
 BIN="$APPDIR/usr/bin/$APP_NAME"
-DESKTOP="$APPDIR/usr/share/applications/$APP_NAME.desktop"
+DESKTOP="$APPDIR/usr/share/applications/$APP_ID.desktop"
 # appimagetool needs a PNG (or XPM) icon for .DirIcon; SVG isn't accepted.
-ICON="$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png"
+ICON="$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_ID.png"
 for f in "$BIN" "$DESKTOP" "$ICON"; do
     [[ -f "$f" ]] || die "the install step didn't create $f (check the install() rules in CMakeLists.txt)"
 done
@@ -159,10 +161,10 @@ if [[ ${#EXTRA[@]} -gt 0 ]]; then
     [[ -n "$(find "$APPDIR/usr/lib" -name 'libSDL3.so*' -print)" ]] || die "SDL3 was not bundled"
 fi
 
-# The AppImage's own icon: <name>.png at the top of the AppDir, from which appimagetool
-# makes .DirIcon. Replace whatever linuxdeploy put there.
-rm -f "$APPDIR/.DirIcon" "$APPDIR/$APP_NAME.svg" "$APPDIR/$APP_NAME.xpm"
-cp "$ICON" "$APPDIR/$APP_NAME.png"
+# The AppImage's own icon: <Icon= name>.png at the top of the AppDir, from which
+# appimagetool makes .DirIcon. Replace whatever linuxdeploy put there.
+rm -f "$APPDIR/.DirIcon" "$APPDIR/$APP_ID.svg" "$APPDIR/$APP_ID.xpm"
+cp "$ICON" "$APPDIR/$APP_ID.png"
 
 OUTPUT="$OUT/$APP_NAME-$APP_VERSION-x86_64.AppImage"
 RUNTIME=()

@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 
 # ---------------------------------------------------------------------------
-# App identity. To rename the app, change these three lines only.
+# App identity. To rename the app, change these lines (and the metainfo file's name).
 # APP_NAME is used for the binary, XDG folders, log file and window class.
+# APP_ID is the reverse-DNS id app stores and Flatpak use (packaging/<APP_ID>.metainfo.xml).
 # ---------------------------------------------------------------------------
 set(APP_NAME         "stlounge")
 set(APP_DISPLAY_NAME "stlounge")
-set(APP_VERSION      "1.0.0")
+set(APP_VERSION      "1.0.1")
+set(APP_ID           "io.github.durandarthur.stlounge")
 
 project(${APP_NAME} VERSION ${APP_VERSION} LANGUAGES C CXX)
 
@@ -124,17 +126,20 @@ target_link_libraries(${APP_NAME} PRIVATE sp_app)
 include(GNUInstallDirs)
 install(TARGETS ${APP_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY assets/textures DESTINATION ${CMAKE_INSTALL_DATADIR}/${APP_NAME})
-configure_file(packaging/app.desktop.in ${CMAKE_BINARY_DIR}/generated/${APP_NAME}.desktop @ONLY)
-install(FILES ${CMAKE_BINARY_DIR}/generated/${APP_NAME}.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+# The desktop file and icons are named after APP_ID, as app stores and Flatpak expect.
+configure_file(packaging/app.desktop.in ${CMAKE_BINARY_DIR}/generated/${APP_ID}.desktop @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/generated/${APP_ID}.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 # App icon: assets/icons/icon.svg, rendered to PNGs by packaging/render-icons.sh.
 install(FILES assets/icons/icon.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
-        RENAME ${APP_NAME}.svg)
+        RENAME ${APP_ID}.svg)
 foreach(size 16 32 48 64 128 256)
   install(FILES assets/icons/${size}.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
-          RENAME ${APP_NAME}.png)
+          RENAME ${APP_ID}.png)
 endforeach()
 # The window icon, found like the textures (next to the binary or in the source tree).
 install(FILES assets/icons/64.png DESTINATION ${CMAKE_INSTALL_DATADIR}/${APP_NAME}/icons)
+# AppStream metadata, for app stores (GNOME Software, KDE Discover, Flathub).
+install(FILES packaging/${APP_ID}.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
 
 if(SP_BUILD_TESTS)
   enable_testing()

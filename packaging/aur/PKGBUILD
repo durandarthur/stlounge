@@ -1,10 +1,10 @@
-# Maintainer: durandarthur durandarthur09@outlook.fr
+# Maintainer: durandarthur <durandarthur09@outlook.fr>
 #
 # Source package for the AUR. Copy this file into the AUR git repo, then for each release:
 #   update pkgver (and reset pkgrel=1), run updpkgsums, makepkg --printsrcinfo > .SRCINFO
 
 pkgname=stlounge
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc="Lightweight player for ShaderToy shaders, with playlists and desktop-audio reactivity"
 arch=('x86_64')

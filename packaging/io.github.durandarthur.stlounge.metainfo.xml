@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: what app stores (GNOME Software, KDE Discover, Flathub) show. -->
+<component type="desktop-application">
+  <id>io.github.durandarthur.stlounge</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>stlounge</name>
+  <summary>Play ShaderToy shaders as eye candy</summary>
+  <developer id="io.github.durandarthur">
+    <name>durandarthur</name>
+  </developer>
+
+  <description>
+    <p>
+      stlounge is a lightweight player for ShaderToy shaders, meant to be left running as eye
+      candy: playlists, shuffle, crossfades, and shaders that react to whatever your desktop is
+      playing.
+    </p>
+    <ul>
+      <li>Runs ShaderToy shaders natively, including multipass buffers, textures, cubemaps, mouse input and desktop audio</li>
+      <li>A shader library with playlists, favorites, shuffle, auto-advance, crossfade and lock</li>
+      <li>Shaders that fail to compile, crash the driver or are too slow for your GPU are skipped</li>
+      <li>Add shaders by pasting or importing their ShaderToy JSON, or write your own</li>
+    </ul>
+    <p>
+      No shaders are included: import the ones you like from shadertoy.com. Each shader belongs to
+      its author, and the app shows its author and link.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.durandarthur.stlounge.desktop</launchable>
+  <provides>
+    <binary>stlounge</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/durandarthur/stlounge</url>
+  <url type="bugtracker">https://github.com/durandarthur/stlounge/issues</url>
+  <url type="vcs-browser">https://github.com/durandarthur/stlounge</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>A shader playing, with the info panel and the library</caption>
+      <image>https://raw.githubusercontent.com/durandarthur/stlounge/v1.0.0/assets/preview1.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A shader filling the window, with the interface hidden</caption>
+      <image>https://raw.githubusercontent.com/durandarthur/stlounge/v1.0.0/assets/preview2.png</image>
+    </screenshot>
+  </screenshots>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#ffc2ee</color>
+    <color type="primary" scheme_preference="dark">#8a2f6e</color>
+  </branding>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+
+  <content_rating type="oars-1.1"/>
+
+  <categories>
+    <category>Graphics</category>
+    <category>Viewer</category>
+  </categories>
+  <keywords>
+    <keyword>shadertoy</keyword>
+    <keyword>shader</keyword>
+    <keyword>glsl</keyword>
+    <keyword>visualizer</keyword>
+  </keywords>
+
+  <releases>
+    <release version="1.0.1" date="2026-11-01">
+      <description>
+        <p>Packaging release: no change to how shaders play.</p>
+        <ul>
+          <li>Available as a Flatpak, with app store information</li>
+          <li>The AppImage now runs on older distributions (glibc 2.35 or newer)</li>
+          <li>The desktop file and icon are now named io.github.durandarthur.stlounge</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.0.0" date="2026-11-01">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

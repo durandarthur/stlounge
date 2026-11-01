@@ -1,0 +1,71 @@
+# Flatpak manifest. Builds this checkout:
+#
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#       packaging/flatpak/io.github.durandarthur.stlounge.yml
+#   flatpak run io.github.durandarthur.stlounge
+#
+# The Flathub copy is the same file with the last source replaced by the release tag:
+#   - type: git
+#     url: https://github.com/durandarthur/stlounge.git
+#     tag: vX.Y.Z
+#     commit: <full commit hash of the tag>
+id: io.github.durandarthur.stlounge
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: stlounge
+
+finish-args:
+  # Display: Wayland, or X11 when there's no Wayland session.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # GPU (OpenGL ES through EGL).
+  - --device=dri
+  # Desktop audio capture: shaders react to what's playing (PulseAudio or PipeWire).
+  - --socket=pulseaudio
+  # The in-app file browser opens in Downloads, where browser extensions save shader JSON;
+  # Pictures is for choosing your own textures.
+  - --filesystem=xdg-download:ro
+  - --filesystem=xdg-pictures:ro
+  # Screenshots (F12) go to ~/Pictures/stlounge.
+  - --filesystem=xdg-pictures/stlounge:create
+  # Window app id = the Flatpak id, so desktops match the window to its icon.
+  - --env=SDL_VIDEO_WAYLAND_WMCLASS=io.github.durandarthur.stlounge
+  - --env=SDL_VIDEO_X11_WMCLASS=io.github.durandarthur.stlounge
+  - --env=SDL_APP_ID=io.github.durandarthur.stlounge
+
+modules:
+  # Header-only; only needed to build, so nothing of it is kept.
+  - name: nlohmann-json
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DJSON_BuildTests=OFF
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+        sha256: 42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+        x-checker-data:
+          type: anitya
+          project-id: 11152
+          stable-only: true
+          url-template: https://github.com/nlohmann/json/releases/download/v$version/json.tar.xz
+
+  - name: stlounge
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSP_BUILD_TESTS=OFF
+      - -DSP_USE_SOURCE_ASSETS=OFF
+    sources:
+      - type: dir
+        path: ../..
+        skip:  # local build output
+          - .flatpak-builder
+          - build
+          - build-appimage
+          - build-asan
+          - build-flatpak
+          - build-flatpak-repo

@@ -223,7 +223,9 @@ ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-asan --output-on-failure
 ./packaging/build-appimage.sh            # --clean for a fresh build, --help for options
 ```
 
-The result is `build-appimage/stlounge-<version>-x86_64.AppImage`.
+The result is `build-appimage/stlounge-<version>-x86_64.AppImage`. GitHub Actions
+(`.github/workflows/build.yml`) builds it in an Ubuntu 22.04 container on every push and attaches
+it to the release when a `v*` tag is pushed.
 
 - It needs `linuxdeploy` and `appimagetool`. If they aren't installed, the script downloads
   them into `build-appimage/tools/` (`--no-download` prevents this). To pin them, add their
@@ -235,9 +237,19 @@ The result is `build-appimage/stlounge-<version>-x86_64.AppImage`.
 
 ### Packaging
 
-`packaging/aur/PKGBUILD` builds the AUR package from a tagged release. Distribution packages
-should configure with `-DSP_USE_SOURCE_ASSETS=OFF`, so the binary only looks for its textures
-in `<prefix>/share/stlounge` and doesn't carry the build folder's path.
+- **App id:** `io.github.durandarthur.stlounge` (`APP_ID` in `CMakeLists.txt`). The desktop file,
+  icons and AppStream metadata (`packaging/io.github.durandarthur.stlounge.metainfo.xml`) are
+  installed under that name. Add a `<release>` entry to the metainfo file for each version.
+- **Distribution packages** should configure with `-DSP_USE_SOURCE_ASSETS=OFF`, so the binary only
+  looks for its textures in `<prefix>/share/stlounge` and doesn't carry the build folder's path.
+- **Arch:** `packaging/aur/PKGBUILD` builds a package from a tagged release.
+- **Flatpak:** `packaging/flatpak/io.github.durandarthur.stlounge.yml` builds this checkout:
+
+  ```sh
+  flatpak-builder --user --install --install-deps-from=flathub --force-clean build-flatpak \
+      packaging/flatpak/io.github.durandarthur.stlounge.yml
+  flatpak run io.github.durandarthur.stlounge
+  ```
 
 ### Code layout
 
