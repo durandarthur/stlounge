@@ -8,6 +8,8 @@ compile_commands.json
 /*-data/
 # Real shaders by other authors, used only for local tests (not committed).
 /tests/data/private/
+# Maintainer notes, kept local
 deps.md
 SPEC.md
+RELEASING.md
 **/.claude/
